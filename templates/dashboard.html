@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Machines — Bastion{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Inventaire — {{ total_count }} machine{{ 's' if total_count > 1 else '' }}</div>
+  <div class="page-actions">
+    <a class="btn" href="{{ url_for('new_room') }}">+ Salle</a>
+    <a class="btn primary" href="{{ url_for('new_host') }}">+ Hôte</a>
+  </div>
+</div>
+
+{% if rooms %}
+<div class="room-tabs">
+  <a class="tab {{ 'active' if not active_room else '' }}" href="{{ url_for('dashboard') }}">Toutes</a>
+  {% for r in rooms %}
+  <a class="tab {{ 'active' if active_room == r.id else '' }}" href="{{ url_for('dashboard', room=r.id) }}">{{ r.name }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% for group in groups %}
+<div class="room-group">
+  <div class="room-group-header">
+    <span>{{ group.room.name if group.room else "Sans salle" }}</span>
+    {% if group.room %}
+    <span class="header-actions">
+      <a class="btn small" href="{{ url_for('map_view', room_id=group.room.id) }}">Voir le plan</a>
+      <a class="btn small" href="{{ url_for('edit_room', room_id=group.room.id) }}">Éditer la salle</a>
+    </span>
+    {% endif %}
+  </div>
+
+  <div class="machine-grid" id="machine-grid">
+    {% for m in group.machines %}
+    {% set st = statuses.get(m.id) %}
+    <div class="machine-card" data-id="{{ m.id }}">
+      <div class="row1">
+        <span class="machine-name">{{ m.name }}</span>
+        <span class="status-dot {{ st.status if st else 'unknown' }}" data-role="dot"></span>
+      </div>
+      <div class="machine-meta">
+        {{ m.host }} · {{ m.os }}
+        <span class="latency" data-role="latency">
+          {% if st and st.latency_ms %} · {{ st.latency_ms }} ms{% endif %}
+        </span>
+      </div>
+      <div class="service-badges">
+        <span class="svc-badge {{ 'ok' if st and st.services and st.services.get('ssh') else 'ko' }}" data-svc="ssh">SSH</span>
+      </div>
+      <div class="actions">
+        <a class="btn" href="{{ url_for('terminal', machine_id=m.id) }}">SSH</a>
+        <a class="btn" href="{{ url_for('vnc', machine_id=m.id) }}">VNC</a>
+        <button class="btn" data-action-id="{{ m.id }}" data-action-name="{{ m.name }}">Actions</button>
+        <a class="btn" href="{{ url_for('edit_host', machine_id=m.id) }}">Éditer</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<p class="empty-state">Aucune machine pour l'instant. <a href="{{ url_for('new_host') }}">Ajoutez-en une</a>.</p>
+{% endfor %}
+
+<!-- Popup d'actions sur une machine -->
+{% include "_action_modal.html" %}
+
+<script src="{{ url_for('static', filename='js/actions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

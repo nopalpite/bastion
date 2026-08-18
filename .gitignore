@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+
+# noVNC vendoré au build (voir README) — pas commité, cloné/copié à part
+static/novnc/
+
+# Contenu généré / mutable en run
+vnc_tokens.conf
+static/uploads/maps/*
+!static/uploads/maps/.gitkeep
+
+# Secrets locaux
+.env
+
+# Éditeurs / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}SSH — {{ machine.name }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+{% endblock %}
+
+{% block body %}
+<div class="session-header">
+  <span>SSH · <span class="machine-name">{{ machine.name }}</span> ({{ machine.host }})</span>
+  <a class="btn" href="{{ url_for('dashboard') }}">Retour</a>
+</div>
+
+<div id="connect-form" class="connect-form" {{ 'style=display:none;' if has_stored_creds }}>
+  <div class="field">
+    <label for="username">Utilisateur SSH</label>
+    <input type="text" id="username" autofocus>
+  </div>
+  <div class="field">
+    <label for="password">Mot de passe</label>
+    <input type="password" id="password">
+  </div>
+  <button class="btn primary" id="connect-btn">Se connecter</button>
+  <div id="connect-error" class="error-msg"></div>
+</div>
+
+<div id="key-mismatch-banner" class="key-mismatch-banner" style="display:none;">
+  <p id="key-mismatch-message"></p>
+  <p class="fingerprint">Nouvelle empreinte (<span id="key-mismatch-type"></span>) : <code id="key-mismatch-fingerprint"></code></p>
+  <p class="warn-note">Ne confirmez que si vous êtes certain que ce changement est légitime (réinstallation planifiée, etc).</p>
+  <div class="key-mismatch-actions">
+    <button class="btn danger" id="trust-new-key-btn">Faire confiance à cette nouvelle clé</button>
+    <button class="btn" id="cancel-key-btn">Annuler</button>
+  </div>
+</div>
+
+<div id="session-layout" class="session-layout" style="display:none;">
+  <aside id="file-browser" class="file-browser">
+    <div class="fb-header">
+      <button id="fb-up" class="btn small" title="Dossier parent">↑</button>
+      <span id="fb-path" class="fb-path">/</span>
+      <button id="fb-follow" class="btn small" title="Suivre le répertoire courant du terminal">⚓ Suivre</button>
+      <button id="fb-refresh" class="btn small" title="Rafraîchir">⟳</button>
+    </div>
+
+    <div id="fb-dropzone" class="fb-dropzone">
+      <div id="fb-list" class="fb-list"></div>
+    </div>
+
+    <div class="fb-actions">
+      <label class="btn small fb-upload-label">
+        Envoyer
+        <input type="file" id="fb-upload-input" style="display:none;" multiple>
+      </label>
+      <button class="btn small" id="fb-mkdir">Dossier</button>
+    </div>
+
+    <div id="fb-message" class="fb-message"></div>
+  </aside>
+
+  <div id="resize-handle" class="resize-handle" title="Glisser pour redimensionner"></div>
+
+  <div id="terminal" class="terminal-pane"></div>
+</div>
+
+<div id="file-editor-modal" class="modal-overlay" style="display:none;">
+  <div class="modal-box editor-modal-box">
+    <div class="editor-modal-header">
+      <span class="modal-title" id="editor-filename">Fichier</span>
+      <span id="editor-path" class="editor-path"></span>
+    </div>
+    <textarea id="editor-textarea" class="editor-textarea" spellcheck="false" disabled></textarea>
+    <div id="editor-message" class="modal-message"></div>
+    <div class="modal-actions">
+      <button class="btn primary" id="editor-save-btn">Enregistrer</button>
+      <button class="btn" id="editor-close-btn">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const machineId = "{{ machine.id }}";
+  const hasStoredCreds = {{ 'true' if has_stored_creds else 'false' }};
+</script>
+<script src="{{ url_for('static', filename='js/terminal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sftp.js') }}"></script>
+{% endblock %}

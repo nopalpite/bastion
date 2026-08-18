@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ "Modifier" if machine else "Ajouter" }} un hôte — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-title">{{ "Modifier l'hôte" if machine else "Ajouter un hôte" }}</div>
+
+<form method="post" enctype="multipart/form-data" class="wide-form">
+  {% if error %}<div class="error-msg">{{ error }}</div>{% endif %}
+
+  <div class="form-grid">
+    <div class="field">
+      <label for="name">Nom</label>
+      <input type="text" id="name" name="name" value="{{ machine.name if machine else '' }}" placeholder="Serveur Web Linux" required autofocus>
+    </div>
+
+    <div class="field">
+      <label for="os">Système</label>
+      <select id="os" name="os" required>
+        <option value="linux" {{ "selected" if machine and machine.os == "linux" else "" }}>Linux</option>
+        <option value="windows" {{ "selected" if machine and machine.os == "windows" else "" }}>Windows</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="host">Adresse / hostname</label>
+      <input type="text" id="host" name="host" value="{{ machine.host if machine else '' }}" placeholder="192.168.1.10" required>
+    </div>
+
+    <div class="field">
+      <label for="ssh_port">Port SSH</label>
+      <input type="number" id="ssh_port" name="ssh_port" value="{{ machine.ssh_port if machine else 22 }}">
+    </div>
+
+    <div class="field">
+      <label for="rdp_port">Port RDP (Windows, info seulement — pas utilisé par l'appli)</label>
+      <input type="number" id="rdp_port" name="rdp_port" value="{{ machine.rdp_port if machine else 3389 }}">
+    </div>
+
+    <div class="field">
+      <label for="vnc_port">Port VNC (optionnel)</label>
+      <input type="number" id="vnc_port" name="vnc_port" value="{{ machine.vnc_port if machine else '' }}" placeholder="5900">
+    </div>
+
+    <div class="field">
+      <label for="room">Salle</label>
+      <select id="room" name="room">
+        <option value="">— aucune —</option>
+        {% for r in rooms %}
+        <option value="{{ r.id }}" {{ "selected" if machine and machine.room == r.id else "" }}>{{ r.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="section-sep">Identifiants (optionnel)</div>
+
+  {% if not credentials_enabled %}
+  <p class="hint-box">
+    La mémorisation des identifiants est désactivée: aucune
+    <code>BASTION_CREDENTIALS_KEY</code> n'est configurée côté serveur.
+  </p>
+  {% elif machine and machine.credentials %}
+  <p class="hint-box">
+    Des identifiants sont déjà mémorisés pour cet hôte (utilisateur
+    <code>{{ machine.credentials.username }}</code>). Laissez les champs
+    ci-dessous vides pour les conserver, ou remplissez-les (+ cochez
+    "Mémoriser") pour les remplacer.
+  </p>
+  {% endif %}
+
+  <div class="form-grid">
+    <div class="field">
+      <label for="username">Utilisateur SSH</label>
+      <input type="text" id="username" name="username" {{ 'disabled' if not credentials_enabled else '' }}>
+    </div>
+    <div class="field">
+      <label for="password">Mot de passe</label>
+      <input type="password" id="password" name="password" {{ 'disabled' if not credentials_enabled else '' }}>
+    </div>
+  </div>
+
+  {% if credentials_enabled %}
+  <label class="checkbox-line">
+    <input type="checkbox" name="remember">
+    Mémoriser ces identifiants (chiffrés) pour éviter de les ressaisir à chaque connexion
+  </label>
+  {% if machine and machine.credentials %}
+  <label class="checkbox-line">
+    <input type="checkbox" name="clear_credentials">
+    Supprimer les identifiants mémorisés pour cet hôte
+  </label>
+  {% endif %}
+  {% endif %}
+
+  <div class="section-sep">VNC (optionnel)</div>
+  <p class="hint-box">
+    Le mot de passe (et l'utilisateur, si le serveur en demande un) sera
+    envoyé automatiquement à l'ouverture de la connexion VNC — sinon
+    noVNC vous les demandera à chaque fois via un petit formulaire.
+  </p>
+
+  <div class="form-grid" style="margin-top: 14px;">
+    <div class="field">
+      <label for="vnc_username">Utilisateur VNC (optionnel, rarement nécessaire)</label>
+      <input type="text" id="vnc_username" name="vnc_username" value="{{ machine.vnc_username if machine else '' }}">
+    </div>
+    <div class="field">
+      <label for="vnc_password">Mot de passe VNC (optionnel)</label>
+      <input type="password" id="vnc_password" name="vnc_password" {{ 'disabled' if not credentials_enabled else '' }}>
+    </div>
+  </div>
+  {% if not credentials_enabled %}
+  <p class="hint-box">
+    La mémorisation du mot de passe VNC est désactivée: aucune
+    <code>BASTION_CREDENTIALS_KEY</code> n'est configurée côté serveur.
+  </p>
+  {% elif machine and machine.vnc_password %}
+  <p class="hint-box">Un mot de passe VNC est déjà mémorisé pour cet hôte. Laissez vide pour le conserver, remplissez pour le remplacer.</p>
+  <label class="checkbox-line">
+    <input type="checkbox" name="clear_vnc_password">
+    Supprimer le mot de passe VNC mémorisé
+  </label>
+  {% endif %}
+
+  {% if not machine %}
+  <div class="section-sep">Plan (si une salle est sélectionnée)</div>
+  <p class="hint-box">
+    La position sur le plan se place ensuite depuis la page "Voir le plan"
+    de la salle, par glisser-déposer.
+  </p>
+  {% endif %}
+
+  <div class="form-actions">
+    <button class="btn primary" type="submit">{{ "Enregistrer" if machine else "Ajouter l'hôte" }}</button>
+    {% if machine %}
+    <button class="btn danger" type="submit" name="delete" value="1"
+            onclick="return confirm('Supprimer définitivement cet hôte ?');">
+      Supprimer cet hôte
+    </button>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}

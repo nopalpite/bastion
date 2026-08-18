@@ -1,0 +1,43 @@
+rooms:
+  - id: salle-a
+    name: "Salle serveurs A"
+    map_image: null
+
+  - id: salle-b
+    name: "Salle serveurs B"
+    map_image: null
+
+machines:
+  - id: srv-linux-01
+    name: "Serveur Web Linux"
+    os: linux
+    host: 192.168.1.10
+    ssh_port: 22
+    vnc_port: 5901
+    room: salle-a
+    position: {x: 30, y: 40}
+    # Identifiants mémorisés (optionnel). Le mot de passe est chiffré via
+    # BASTION_CREDENTIALS_KEY - ne jamais écrire un mot de passe en clair
+    # ici à la main, passer par la page "+ Hôte" ou par credentials.py.
+    # credentials:
+    #   username: root
+    #   password: "gAAAAA...=="
+
+  - id: srv-linux-02
+    name: "Serveur BDD Linux"
+    os: linux
+    host: 192.168.1.11
+    ssh_port: 22
+    vnc_port: 5902
+    room: salle-a
+    position: {x: 65, y: 40}
+
+  - id: srv-win-01
+    name: "Serveur Windows AD"
+    os: windows
+    host: 192.168.1.20
+    ssh_port: 22
+    rdp_port: 3389
+    vnc_port: 5900
+    room: salle-b
+    position: {x: 50, y: 50}

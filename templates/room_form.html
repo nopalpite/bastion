@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ "Modifier" if room else "Ajouter" }} une salle — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-title">{{ "Modifier la salle" if room else "Ajouter une salle" }}</div>
+
+<form method="post" enctype="multipart/form-data" class="wide-form">
+  {% if error %}<div class="error-msg">{{ error }}</div>{% endif %}
+
+  <div class="field">
+    <label for="name">Nom de la salle</label>
+    <input type="text" id="name" name="name" value="{{ room.name if room else '' }}" placeholder="Salle serveurs A" required autofocus>
+  </div>
+
+  {% if room and room.map_image %}
+  <div class="field">
+    <label>Plan actuel</label>
+    <img class="current-map-preview" src="{{ url_for('static', filename='uploads/maps/' + room.map_image) }}" alt="Plan actuel">
+  </div>
+  {% endif %}
+
+  <div class="field">
+    <label for="map_image">{{ "Remplacer le plan" if room and room.map_image else "Plan de la salle" }} (image, optionnel)</label>
+    <input type="file" id="map_image" name="map_image" accept=".png,.jpg,.jpeg,.svg">
+    <p class="hint-box">
+      Format image simple (PNG/JPG/SVG). Vous pourrez ensuite placer les
+      machines dessus par glisser-déposer depuis la page "plan" de la salle.
+    </p>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn primary" type="submit">{{ "Enregistrer" if room else "Créer la salle" }}</button>
+    {% if room %}
+    <button class="btn danger" type="submit" name="delete" value="1"
+            onclick="return confirm('Supprimer cette salle ? Les machines associées seront détachées (pas supprimées).');">
+      Supprimer cette salle
+    </button>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}

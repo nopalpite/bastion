@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Plan — {{ room.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Plan — {{ room.name }}</div>
+  <div class="page-actions">
+    <a class="btn" href="{{ url_for('dashboard', room=room.id) }}">Retour à la liste</a>
+    <a class="btn" href="{{ url_for('edit_room', room_id=room.id) }}">Éditer la salle</a>
+    <button class="btn primary" id="toggle-edit">Activer le mode édition</button>
+  </div>
+</div>
+
+{% if unplaced %}
+<div class="unplaced-bar">
+  <span>Non placées sur le plan :</span>
+  {% for m in unplaced %}
+  <button class="chip" data-place-id="{{ m.id }}">{{ m.name }} · placer au centre</button>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div id="map-wrap" class="map-wrap" data-room-id="{{ room.id }}">
+  {% if room.map_image %}
+  <img id="map-bg" src="{{ url_for('static', filename='uploads/maps/' + room.map_image) }}" alt="Plan de {{ room.name }}">
+  {% else %}
+  <div class="map-placeholder">
+    Aucun plan importé pour cette salle. Vous pouvez quand même placer les
+    machines sur ce fond neutre, ou <a href="{{ url_for('new_room') }}">ajouter une image de plan</a>
+    à une nouvelle salle.
+  </div>
+  {% endif %}
+
+  {% for m in machines %}
+  {% if m.position %}
+  {% set st = statuses.get(m.id) %}
+  {% set svc = (st.services if st else {}) or {} %}
+  {% set svc_parts = [] %}
+  {% if 'ssh' in svc %}{% set _ = svc_parts.append('SSH ' + ('OK' if svc.ssh else 'KO')) %}{% endif %}
+  <div class="map-marker" data-id="{{ m.id }}" data-name="{{ m.name }}"
+       title="{{ m.name }}{{ (' — ' + svc_parts|join(' · ')) if svc_parts else '' }}"
+       style="left: {{ m.position.x }}%; top: {{ m.position.y }}%;">
+    <span class="status-dot {{ st.status if st else 'unknown' }}"></span>
+    <span class="marker-label">{{ m.name }}</span>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<!-- Popup d'actions sur une machine -->
+{% include "_action_modal.html" %}
+
+<script src="{{ url_for('static', filename='js/actions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+{% endblock %}
