@@ -695,6 +695,17 @@ form button[type="submit"] { margin-top: 24px; }
    donc qu'au wrapper CodeMirror. */
 .editor-modal-box .CodeMirror {
   flex: 1;
+  /* height: 0 plutôt que min-height: 0 seul: CodeMirror calcule son
+     scroll interne à partir de la hauteur réellement posée sur ce
+     wrapper. Avec "min-height: 0" seul, Firefox mobile laisse parfois
+     "height" à sa valeur "auto" par défaut pour cet enfant flex — au
+     lieu de la hauteur restante réellement disponible dans la colonne
+     — et CodeMirror grandit alors pour contenir tout le fichier plutôt
+     que de défiler dedans, poussant les boutons Enregistrer/Fermer hors
+     de l'écran sur les fichiers longs. "height: 0" force le moteur flex
+     à calculer une hauteur concrète (via flex-grow) plutôt que "auto",
+     ce que Firefox comme Chrome respectent de façon fiable ici. */
+  height: 0;
   min-height: 0;
   width: 100%;
   border: 1px solid var(--border);
