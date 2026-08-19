@@ -4,6 +4,42 @@ let fitAddon = null;
 let ctrlSticky = false;
 const ctrlBtn = document.getElementById("mk-ctrl");
 
+// Cette page n'a rien à faire défiler elle-même (session-layout occupe
+// tout l'écran) — verrouillé pour éviter que le comportement mobile
+// "faire défiler jusqu'au champ actif" (voir syncSessionLayoutViewport
+// ci-dessous) ne scrolle la page entière plutôt que de rester géré par le
+// dimensionnement dynamique, ce qui emmènerait la barre de touches
+// spéciales hors champ avec lui.
+document.body.style.overflow = "hidden";
+
+// --- Adapter la mise en page au clavier virtuel (mobile) -------------------
+//
+// .session-layout a une hauteur fixée en CSS par calc(100vh - 49px) — mais
+// sur mobile, l'ouverture du clavier virtuel ne réduit pas forcément ce
+// 100vh (notamment Chrome Android): le conteneur garde sa taille d'avant
+// clavier, le champ actif d'xterm.js (en bas de la mise en page) se
+// retrouve alors caché sous le clavier, et le navigateur scrolle la page
+// pour l'y ramener visible — ce qui emmène la barre de touches spéciales
+// (en haut de .terminal-pane) hors de l'écran avec lui. L'API
+// VisualViewport donne la taille RÉELLEMENT visible en temps réel: on
+// l'utilise pour redimensionner .session-layout à cette taille exacte, pour
+// qu'il n'y ait justement jamais besoin de scroller quoi que ce soit.
+const sessionLayoutEl = document.getElementById("session-layout");
+const topbarEl = document.querySelector(".topbar");
+
+function syncSessionLayoutViewport() {
+  if (!window.visualViewport || sessionLayoutEl.style.display === "none") return;
+  const topbarHeight = topbarEl ? topbarEl.offsetHeight : 0;
+  sessionLayoutEl.style.height = `${window.visualViewport.height - topbarHeight}px`;
+  if (fitAddon) fitAddon.fit();
+  if (term) socket.emit("ssh_resize", { cols: term.cols, rows: term.rows });
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncSessionLayoutViewport);
+  window.visualViewport.addEventListener("scroll", syncSessionLayoutViewport);
+}
+
 // Extrait le chemin d'une charge utile OSC 7 ("file://hostname/chemin").
 // Convention standard utilisée par de nombreux terminaux (iTerm2, VS
 // Code, gnome-terminal...) pour signaler le répertoire courant du shell.
@@ -68,7 +104,8 @@ function reportCwd(path) {
 
 function openTerminal() {
   document.getElementById("connect-form").style.display = "none";
-  document.getElementById("session-layout").style.display = "flex";
+  sessionLayoutEl.style.display = "flex";
+  syncSessionLayoutViewport();
   const termEl = document.getElementById("terminal");
 
   term = new Terminal({
