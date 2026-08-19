@@ -652,26 +652,48 @@ form button[type="submit"] { margin-top: 24px; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.editor-textarea {
+/* CodeMirror.fromTextArea() (voir sftp.js) remplace le <textarea>
+   d'origine par un .CodeMirror qui prend sa place dans .editor-modal-box —
+   le <textarea> reste dans le DOM mais caché, ces règles ne s'appliquent
+   donc qu'au wrapper CodeMirror. */
+.editor-modal-box .CodeMirror {
   flex: 1;
   min-height: 0;
   width: 100%;
-  resize: none;
-  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text);
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.5;
-  padding: 12px;
-  tab-size: 4;
 }
-.editor-textarea:disabled {
-  color: var(--text-dim);
+.editor-modal-box .CodeMirror.cm-loading {
+  opacity: 0.6;
 }
 .editor-modal-box .modal-message { flex-shrink: 0; }
 .editor-modal-box .modal-actions { flex-shrink: 0; margin-bottom: 0; margin-top: 4px; }
+
+/* Thème CodeMirror ("bastion") aligné sur la palette sombre du site
+   plutôt que sur un thème CodeMirror tout fait — voir les variables
+   dans :root en haut de ce fichier. */
+.cm-s-bastion.CodeMirror { background: var(--bg); color: var(--text); }
+.cm-s-bastion .CodeMirror-gutters { background: var(--bg-raised); border-right: 1px solid var(--border); }
+.cm-s-bastion .CodeMirror-linenumber { color: var(--text-dim); }
+.cm-s-bastion .CodeMirror-cursor { border-left: 1px solid var(--accent); }
+.cm-s-bastion div.CodeMirror-selected { background: var(--accent-dim); }
+.cm-s-bastion .CodeMirror-activeline-background { background: rgba(61, 220, 214, 0.06); }
+.cm-s-bastion .CodeMirror-matchingbracket { color: var(--accent); text-decoration: underline; }
+.cm-s-bastion .cm-comment { color: var(--text-dim); font-style: italic; }
+.cm-s-bastion .cm-string, .cm-s-bastion .cm-string-2 { color: #9ece6a; }
+.cm-s-bastion .cm-number, .cm-s-bastion .cm-atom { color: #e0af68; }
+.cm-s-bastion .cm-keyword, .cm-s-bastion .cm-tag { color: #ff6b9d; }
+.cm-s-bastion .cm-variable, .cm-s-bastion .cm-variable-2, .cm-s-bastion .cm-variable-3 { color: var(--text); }
+.cm-s-bastion .cm-def, .cm-s-bastion .cm-builtin, .cm-s-bastion .cm-qualifier { color: var(--accent); }
+.cm-s-bastion .cm-property, .cm-s-bastion .cm-attribute, .cm-s-bastion .cm-link { color: #7dcfff; }
+.cm-s-bastion .cm-meta { color: var(--text-dim); }
+.cm-s-bastion .cm-error, .cm-s-bastion .cm-negative { color: var(--down); }
+.cm-s-bastion .cm-positive { color: var(--up); }
+.cm-s-bastion .cm-header { color: var(--accent); font-weight: 600; }
+.cm-s-bastion .cm-quote { color: var(--text-dim); font-style: italic; }
 
 @media (max-width: 720px) {
   /* Plein écran plutôt qu'un modal centré: sur mobile, un modal
@@ -697,7 +719,7 @@ form button[type="submit"] { margin-top: 24px; }
     border-radius: 0;
     padding: 12px;
   }
-  .editor-textarea {
+  .editor-modal-box .CodeMirror {
     /* >= 16px: en dessous, iOS Safari zoome automatiquement le champ
        au focus, ce qui casse la mise en page et donne l'impression que
        l'éditeur ne fonctionne pas. */

@@ -284,10 +284,12 @@ function fbBase64ToBytes(base64) {
 
 // --- Édition de fichier en ligne ------------------------------------------
 //
-// Clic sur le nom d'un fichier: ouvre son contenu dans un éditeur texte
-// simple (pas de coloration syntaxique — un <textarea> brut, pour rester
-// fiable sans dépendre d'une lib externe à charger correctement). Limité
-// aux fichiers texte UTF-8 de moins de 5 Mo (voir sftp_ws.py).
+// Clic sur le nom d'un fichier: ouvre son contenu dans CodeMirror (greffé
+// sur le <textarea> existant via CodeMirror.fromTextArea), avec coloration
+// syntaxique. Le mode est déterminé depuis l'extension du fichier
+// (mode/meta.js) et chargé à la demande depuis le CDN (CodeMirror.autoLoadMode)
+// — une extension non reconnue retombe simplement sur du texte brut, sans
+// erreur. Limité aux fichiers texte UTF-8 de moins de 5 Mo (voir sftp_ws.py).
 
 const editorModal = document.getElementById("file-editor-modal");
 const editorFilename = document.getElementById("editor-filename");
@@ -298,16 +300,49 @@ const editorSaveBtn = document.getElementById("editor-save-btn");
 let editorCurrentPath = null;
 let editorDirty = false;
 
+CodeMirror.modeURL = "https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/%N/%N.min.js";
+
+const editorCM = CodeMirror.fromTextArea(editorTextarea, {
+  lineNumbers: true,
+  theme: "bastion",
+  matchBrackets: true,
+  styleActiveLine: true,
+  indentUnit: 4,
+  tabSize: 4,
+});
+
+editorCM.on("change", (instance, changeObj) => {
+  // "setValue" = chargement programmatique du contenu (fbOpenEditor /
+  // sftp_file_text), pas une vraie frappe utilisateur.
+  if (changeObj.origin === "setValue") return;
+  editorDirty = true;
+});
+
+function fbSetEditorMode(name) {
+  const info = CodeMirror.findModeByFileName(name);
+  if (!info) {
+    editorCM.setOption("mode", null);
+    return;
+  }
+  editorCM.setOption("mode", info.mime || info.mode);
+  CodeMirror.autoLoadMode(editorCM, info.mode);
+}
+
 function fbOpenEditor(path, name) {
   editorCurrentPath = path;
   editorDirty = false;
   editorFilename.textContent = name;
   editorPathEl.textContent = path;
-  editorTextarea.value = "";
-  editorTextarea.disabled = true;
+  editorCM.setValue("");
+  editorCM.setOption("readOnly", true);
+  editorCM.getWrapperElement().classList.add("cm-loading");
   editorMessage.textContent = "Chargement...";
   editorMessage.classList.remove("error");
   editorModal.style.display = "flex";
+  fbSetEditorMode(name);
+  // CodeMirror mesure mal son contenu tant qu'il est caché (display:none) —
+  // on force un recalcul une fois la modale affichée.
+  editorCM.refresh();
   socket.emit("sftp_read_file", { path });
 }
 
@@ -322,16 +357,12 @@ function fbCloseEditor() {
 
 document.getElementById("editor-close-btn").addEventListener("click", fbCloseEditor);
 
-editorTextarea.addEventListener("input", () => {
-  editorDirty = true;
-});
-
 editorSaveBtn.addEventListener("click", () => {
   if (!editorCurrentPath) return;
   editorMessage.textContent = "Enregistrement...";
   editorMessage.classList.remove("error");
   editorSaveBtn.disabled = true;
-  socket.emit("sftp_write_file", { path: editorCurrentPath, content: editorTextarea.value });
+  socket.emit("sftp_write_file", { path: editorCurrentPath, content: editorCM.getValue() });
 });
 
 // --- Évènements serveur ---------------------------------------------------
@@ -406,11 +437,14 @@ socket.on("sftp_download_end", (data) => {
 
 socket.on("sftp_file_text", (data) => {
   if (data.path !== editorCurrentPath) return;
-  editorTextarea.value = data.content;
-  editorTextarea.disabled = false;
+  editorCM.setValue(data.content);
+  editorCM.clearHistory(); // pas d'"annuler" jusqu'au contenu vide initial
+  editorCM.setOption("readOnly", false);
+  editorCM.getWrapperElement().classList.remove("cm-loading");
   editorDirty = false;
   editorMessage.textContent = "";
   editorMessage.classList.remove("error");
+  editorCM.refresh();
 });
 
 socket.on("sftp_file_saved", (data) => {

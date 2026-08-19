@@ -275,10 +275,12 @@ session à l'autre).
 ### Édition de fichier en ligne
 
 Cliquer sur le **nom** d'un fichier (pas l'icône télécharger) ouvre son
-contenu dans un éditeur texte simple, en grand modal. Volontairement un
-`<textarea>` brut sans coloration syntaxique — pas de lib d'éditeur de
-code externe à vendorer/charger, pour rester fiable. `Enregistrer`
-réécrit le fichier sur la machine cible via SFTP.
+contenu dans un éditeur en grand modal, avec coloration syntaxique
+(CodeMirror 5, chargé depuis un CDN comme `xterm.js` — voir
+`templates/terminal.html`). Le langage est détecté depuis l'extension du
+fichier ; sans correspondance reconnue, le fichier reste affiché en texte
+brut, sans erreur. `Enregistrer` réécrit le fichier sur la machine cible
+via SFTP.
 
 Limité aux fichiers texte **UTF-8** de moins de **5 Mo** (`MAX_EDIT_BYTES`
 dans `sftp_ws.py`) : un fichier binaire ou trop volumineux affiche un
