@@ -227,7 +227,7 @@ si vous voulez mémoriser des identifiants SSH) :
 ```yaml
 services:
   bastion:
-    build: .
+    image: ghcr.io/nopalpite/bastion:latest   # ou un tag de version, ex: 1.2.0
     container_name: bastion
     # network_mode: host = pas de NAT, le conteneur voit exactement les
     # mêmes interfaces/routes que le host. Recommandé pour un bastion:
@@ -256,8 +256,15 @@ services:
 ```
 
 ```bash
-docker compose up --build -d
+docker compose up -d
 ```
+
+L'image est publiée sur GHCR (`linux/amd64` + `linux/arm64`) à chaque push
+sur `main` et à chaque tag `vX.Y.Z` (voir
+`.github/workflows/docker-build.yml`). Pour builder depuis les sources à la
+place (si vous modifiez le code, ou pour `armv7`/32-bit — non publié,
+voir la section ARM ci-dessous), remplacez la ligne `image:` par `build: .`
+et lancez `docker compose up --build -d`.
 
 Le conteneur tourne en `network_mode: host` : il partage directement les
 interfaces et routes réseau du host — le choix le plus simple pour un
@@ -274,17 +281,6 @@ puisque l'appli y écrit quand vous ajoutez un hôte/salle depuis
 l'interface) : vous pouvez aussi le modifier à la main sans reconstruire
 l'image, il suffit de redémarrer le conteneur (`docker compose restart`)
 pour que websockify régénère ses tokens.
-
-### Image pré-construite (GHCR)
-
-Chaque push sur `main` et chaque tag `vX.Y.Z` publient une image
-multi-plateforme (`linux/amd64` + `linux/arm64`) sur GitHub Container
-Registry (voir `.github/workflows/docker-build.yml`). Pour l'utiliser sans
-build local, remplacez `build: .` par `image:` dans `docker-compose.yml` :
-
-```yaml
-    image: ghcr.io/nopalpite/bastion:latest   # ou un tag de version, ex: 1.2.0
-```
 
 ### Build sur ARM (Apple Silicon, Raspberry Pi...)
 
