@@ -208,6 +208,7 @@ Variables d'environnement utiles :
 | `BASTION_WEBSOCKIFY_PORT` | port où joindre le proxy VNC (l'hôte est déterminé automatiquement par le navigateur) | `6080` |
 | `BASTION_WEBSOCKIFY_PATH` | si définie (ex: `/vnc-ws/`), route le VNC via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
 | `BASTION_CREDENTIALS_KEY` | clé de chiffrement des identifiants SSH mémorisés. Sans elle, la mémorisation est désactivée. Générer avec `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | (aucune) |
+| `BASTION_DATA_DIR` | dossier contenant `machines.yaml`. L'image Docker la définit à `/app/config` (voir la section Docker) ; sans intérêt à changer hors Docker | dossier de l'appli |
 
 ## Lancement
 
@@ -249,8 +250,10 @@ services:
       # Générer avec: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - BASTION_CREDENTIALS_KEY=
     volumes:
-      # Monter l'inventaire en externe pour le modifier sans rebuild
-      - ./machines.yaml:/app/machines.yaml
+      # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
+      # rebuild. Un DOSSIER, pas le fichier directement — voir la note
+      # ci-dessous.
+      - ./config:/app/config
       # Persister les plans de salle uploadés (sinon perdus au rebuild)
       - ./data/maps:/app/static/uploads/maps
 ```
@@ -276,11 +279,21 @@ un bastion), pensez à les mettre dans la chaîne `DOCKER-USER` plutôt que
 `INPUT`/`FORWARD` — Docker peut sinon les contourner pour le trafic à
 destination de ses conteneurs.
 
-`machines.yaml` est monté en volume (lecture-écriture, nécessaire
-puisque l'appli y écrit quand vous ajoutez un hôte/salle depuis
-l'interface) : vous pouvez aussi le modifier à la main sans reconstruire
+`machines.yaml` (dans `./config`, monté en volume) est en lecture-écriture,
+nécessaire puisque l'appli y écrit quand vous ajoutez un hôte/salle depuis
+l'interface : vous pouvez aussi le modifier à la main sans reconstruire
 l'image, il suffit de redémarrer le conteneur (`docker compose restart`)
 pour que websockify régénère ses tokens.
+
+**Pourquoi monter `./config` (un dossier) plutôt que `machines.yaml`
+directement (un fichier)** : si le fichier n'existe pas encore côté hôte au
+tout premier démarrage, Docker crée un **dossier** à cet emplacement au
+lieu d'un fichier — le montage échoue alors avec une erreur du type
+`... not a directory: Are you trying to mount a directory onto a file?`.
+Monter un dossier n'a pas ce problème (Docker crée un dossier des deux
+côtés si besoin) ; `./config/machines.yaml` est amorcé automatiquement
+avec un inventaire d'exemple si le dossier est vide au démarrage (voir
+`docker/entrypoint.sh`).
 
 ### Build sur ARM (Apple Silicon, Raspberry Pi...)
 

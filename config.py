@@ -6,7 +6,17 @@ store.py, pas ici.
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MACHINES_FILE = os.path.join(BASE_DIR, "machines.yaml")
+
+# Dossier contenant machines.yaml. Par défaut BASE_DIR (comportement
+# historique du dev local: python app.py). L'image Docker surcharge cette
+# variable pour pointer vers un dossier monté en volume (voir Dockerfile /
+# docker-compose.yml) — monter un DOSSIER plutôt que le fichier
+# machines.yaml directement évite un piège Docker classique: si le fichier
+# n'existe pas encore côté hôte au premier démarrage, Docker crée un
+# dossier à sa place au lieu d'un fichier, ce qui casse le montage
+# ("not a directory").
+DATA_DIR = os.environ.get("BASTION_DATA_DIR", BASE_DIR)
+MACHINES_FILE = os.path.join(DATA_DIR, "machines.yaml")
 
 # Clé secrète de l'app (à surcharger via variable d'env en prod)
 SECRET_KEY = os.environ.get("BASTION_SECRET_KEY", "change-moi-en-production")

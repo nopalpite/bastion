@@ -54,6 +54,14 @@ RUN git clone --depth 1 https://github.com/novnc/noVNC.git /tmp/noVNC \
 
 COPY . .
 
+# machines.yaml vit dans un dossier à part, destiné à être monté en volume
+# (voir config.py: BASTION_DATA_DIR, et docker-compose.yml) plutôt que le
+# fichier /app/machines.yaml directement — voir le commentaire de
+# BASTION_DATA_DIR dans config.py pour le piège Docker que ça évite.
+# L'entrypoint copie l'inventaire d'exemple ici au 1er démarrage si le
+# volume monté est vide.
+ENV BASTION_DATA_DIR=/app/config
+
 # Génère le fichier de tokens websockify au démarrage (voir entrypoint.sh)
 # pour prendre en compte machines.yaml à chaque lancement du conteneur.
 COPY docker/entrypoint.sh /entrypoint.sh

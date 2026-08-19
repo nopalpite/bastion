@@ -22,7 +22,10 @@ services:
       # Générer avec: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - BASTION_CREDENTIALS_KEY=
     volumes:
-      # Monter l'inventaire en externe pour le modifier sans rebuild
-      - ./machines.yaml:/app/machines.yaml
+      # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
+      # rebuild. Un DOSSIER, pas le fichier directement: voir BASTION_DATA_DIR
+      # dans config.py — évite un piège Docker si ./config n'existe pas
+      # encore côté hôte (amorcé automatiquement au 1er démarrage).
+      - ./config:/app/config
       # Persister les plans de salle uploadés (sinon perdus au rebuild)
       - ./data/maps:/app/static/uploads/maps

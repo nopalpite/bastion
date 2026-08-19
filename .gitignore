@@ -16,6 +16,11 @@ static/uploads/maps/*
 # Secrets locaux
 .env
 
+# Dossiers de bind-mount Docker locaux (docker-compose.yml), créés/remplis
+# au 1er démarrage — voir la section "Lancement avec Docker" du README.
+/config/
+/data/
+
 # Éditeurs / OS
 .vscode/
 .idea/
