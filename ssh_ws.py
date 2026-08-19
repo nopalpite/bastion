@@ -10,13 +10,13 @@ Le flux est simple:
 """
 import threading
 
-from flask_socketio import emit
 from flask import request
+from flask_socketio import emit
 
-from store import get_machine
 import credentials
 import ssh_client
 from ssh_client import HostKeyChanged
+from store import get_machine
 
 # une session paramiko active par sid de socket.io
 sessions = {}
@@ -66,7 +66,7 @@ def register_ssh_handlers(socketio):
                         {"data": data_out.decode(errors="ignore")},
                         room=sid,
                     )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
             finally:
                 socketio.emit("ssh_closed", {}, room=sid)
@@ -146,11 +146,11 @@ def register_ssh_handlers(socketio):
                 for upload in session.get("uploads", {}).values():
                     try:
                         upload["handle"].close()
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         pass
                 if session.get("sftp"):
                     session["sftp"].close()
                 session["channel"].close()
                 session["client"].close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass

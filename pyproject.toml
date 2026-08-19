@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "BLE", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# app.py fait volontairement "import eventlet; eventlet.monkey_patch()"
+# avant tout le reste (voir le commentaire en tête du fichier) — ni le tri
+# des imports (I001) ni "import pas en haut du fichier" (E402) ne doivent
+# s'appliquer ici, ça casserait cet ordre requis.
+"app.py" = ["E402", "I001"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -277,7 +277,9 @@ def edit_room(room_id):
 
         name = request.form.get("name", "").strip()
         if not name:
-            return render_template("room_form.html", room=room, error="Le nom de la salle est obligatoire.")
+            return render_template(
+                "room_form.html", room=room, error="Le nom de la salle est obligatoire.",
+            )
 
         store.update_room(room_id, name)
 

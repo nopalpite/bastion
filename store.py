@@ -30,14 +30,14 @@ import unicodedata
 
 import yaml
 
-from config import MACHINES_FILE
 import credentials
+from config import MACHINES_FILE
 
 _lock = threading.Lock()
 
 
 def _load():
-    with open(MACHINES_FILE, "r", encoding="utf-8") as f:
+    with open(MACHINES_FILE, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     data.setdefault("rooms", [])
     data.setdefault("machines", [])

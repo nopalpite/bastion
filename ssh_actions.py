@@ -20,10 +20,10 @@ disposant des droits nécessaires pour arrêter/redémarrer.
 """
 import paramiko
 
-from store import get_machine
 import credentials
 import ssh_client
 from ssh_client import HostKeyChanged
+from store import get_machine
 
 # Commandes Linux SANS le préfixe sudo: il est ajouté séparément par
 # _run_linux_action() pour pouvoir lui fournir le mot de passe via -S.

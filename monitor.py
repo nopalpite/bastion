@@ -8,8 +8,8 @@ inversement.
 import platform
 import socket
 import subprocess
-import time
 import threading
+import time
 
 from store import load_machines
 

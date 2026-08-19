@@ -52,7 +52,7 @@ def main(host, port):
     try:
         _, ver = version_str.split(" ")
         major, minor = (int(x) for x in ver.split("."))
-    except Exception:
+    except Exception:  # noqa: BLE001
         print(f"Impossible de parser la version, arrêt: {version_str!r}")
         sock.close()
         return

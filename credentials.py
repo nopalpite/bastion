@@ -8,6 +8,7 @@ Générer une clé:
     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 """
 import os
+
 from cryptography.fernet import Fernet, InvalidToken
 
 

@@ -20,8 +20,8 @@ import base64
 import posixpath
 import stat
 
-from flask_socketio import emit
 from flask import request
+from flask_socketio import emit
 
 MAX_TRANSFER_BYTES = 15 * 1024 * 1024  # 15 Mo
 MAX_EDIT_BYTES = 5 * 1024 * 1024  # 5 Mo — au-delà, un <textarea> devient peu maniable
@@ -129,13 +129,16 @@ def register_sftp_handlers(socketio, sessions):
 
         try:
             raw = base64.b64decode(data.get("content_base64", ""))
-        except Exception:
+        except Exception:  # noqa: BLE001
             return {"ok": False, "error": "Contenu de fragment invalide."}
 
         upload = uploads.get(upload_id)
         if upload is None:
             if chunk_index != 0:
-                return {"ok": False, "error": "Envoi désynchronisé (relancez l'envoi de ce fichier)."}
+                return {
+                    "ok": False,
+                    "error": "Envoi désynchronisé (relancez l'envoi de ce fichier).",
+                }
             try:
                 handle = sftp.open(path, "wb")
             except Exception as exc:  # noqa: BLE001
@@ -279,7 +282,7 @@ def register_sftp_handlers(socketio, sessions):
         content = data.get("content", "")
         try:
             raw = content.encode("utf-8")
-        except Exception:
+        except Exception:  # noqa: BLE001
             emit("sftp_error", {"message": "Contenu invalide (encodage)."})
             return
 
