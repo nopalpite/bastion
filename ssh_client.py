@@ -89,7 +89,10 @@ def connect(machine, username, password, timeout=6):
         )
     except paramiko.BadHostKeyException as exc:
         raise HostKeyChanged(
-            exc.got_key,
+            # BadHostKeyException stocke la clé nouvellement présentée dans
+            # .key (pas .got_key malgré le nom du paramètre du constructeur
+            # paramiko) et l'ancienne clé mémorisée dans .expected_key.
+            exc.key,
             "La clé d'hôte présentée par cette machine a changé depuis la "
             "dernière connexion mémorisée. Cela peut être normal (OS "
             "réinstallé) ou le signe d'une interception (MITM) — à "
