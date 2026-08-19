@@ -1,0 +1,6 @@
+# Outils de développement/CI, en plus de requirements.txt (jamais requis
+# pour faire tourner l'appli elle-même).
+-r requirements.txt
+pytest==8.3.3
+ruff==0.6.9
+pip-audit==2.7.3

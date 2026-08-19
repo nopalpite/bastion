@@ -1,5 +1,8 @@
 # Bastion — dashboard + SSH/VNC web
 
+[![CI](https://github.com/nopalpite/bastion/actions/workflows/ci.yml/badge.svg)](https://github.com/nopalpite/bastion/actions/workflows/ci.yml)
+[![Docker build](https://github.com/nopalpite/bastion/actions/workflows/docker-build.yml/badge.svg)](https://github.com/nopalpite/bastion/actions/workflows/docker-build.yml)
+
 Interface simple pour superviser un parc de machines Windows/Linux et s'y
 connecter en SSH ou VNC directement depuis le navigateur.
 
@@ -271,6 +274,17 @@ puisque l'appli y écrit quand vous ajoutez un hôte/salle depuis
 l'interface) : vous pouvez aussi le modifier à la main sans reconstruire
 l'image, il suffit de redémarrer le conteneur (`docker compose restart`)
 pour que websockify régénère ses tokens.
+
+### Image pré-construite (GHCR)
+
+Chaque push sur `main` et chaque tag `vX.Y.Z` publient une image
+multi-plateforme (`linux/amd64` + `linux/arm64`) sur GitHub Container
+Registry (voir `.github/workflows/docker-build.yml`). Pour l'utiliser sans
+build local, remplacez `build: .` par `image:` dans `docker-compose.yml` :
+
+```yaml
+    image: ghcr.io/nopalpite/bastion:edge   # ou un tag de version, ex: 1.2.0
+```
 
 ### Build sur ARM (Apple Silicon, Raspberry Pi...)
 
