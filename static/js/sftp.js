@@ -365,6 +365,34 @@ editorSaveBtn.addEventListener("click", () => {
   socket.emit("sftp_write_file", { path: editorCurrentPath, content: editorCM.getValue() });
 });
 
+// --- Touches spéciales (mobile), éditeur -----------------------------------
+//
+// Même besoin que la barre du terminal (voir terminal.js): un clavier
+// virtuel n'a pas de touche Tab, indispensable ici pour l'indentation.
+// CodeMirror n'est pas un flux d'octets comme le terminal SSH — pas de
+// séquence d'échappement à envoyer, on appelle directement ses commandes
+// natives (execCommand) plutôt que de réémettre une frappe clavier.
+
+const editorKeysBar = document.getElementById("editor-mobile-keys");
+
+if (editorKeysBar) {
+  editorKeysBar.querySelectorAll("button[data-cmd]").forEach((btn) => {
+    const cmd = btn.dataset.cmd;
+    if (cmd === "dismissKeyboard") {
+      // Seul bouton où perdre le focus est le but (masquer le clavier
+      // virtuel) — pas de preventDefault ici, contrairement aux autres.
+      btn.addEventListener("click", () => editorCM.getInputField().blur());
+      return;
+    }
+    btn.addEventListener("mousedown", (e) => e.preventDefault());
+    btn.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+    btn.addEventListener("click", () => {
+      editorCM.execCommand(cmd);
+      editorCM.focus();
+    });
+  });
+}
+
 // --- Évènements serveur ---------------------------------------------------
 
 socket.on("ssh_ready", () => {
