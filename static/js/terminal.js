@@ -217,8 +217,6 @@ socket.on("ssh_closed", () => {
 //
 // Séquences d'échappement standard xterm en mode normal (correspondent à
 // ce qu'un vrai clavier physique enverrait) — voir SPECIAL_KEYS ci-dessous.
-// mousedown/touchstart avec preventDefault(): un tap sur ces boutons ne
-// doit pas voler le focus du terminal, sinon le clavier virtuel se ferme.
 
 const SPECIAL_KEYS = {
   Escape: "\x1b",
@@ -233,22 +231,34 @@ const SPECIAL_KEYS = {
   PageDown: "\x1b[6~",
 };
 
-function preventFocusSteal(el) {
+// Un tap sur ces boutons ne doit pas voler le focus du terminal, sinon le
+// clavier virtuel se ferme — d'où mousedown/touchstart avec preventDefault().
+// Mais preventDefault() sur touchstart supprime aussi, sur la plupart des
+// navigateurs mobiles, le click synthétique qui suit normalement un tap: se
+// reposer uniquement sur "click" laissait ces boutons sans aucun effet au
+// toucher (fonctionnaient à la souris en test desktop, jamais repéré avant
+// un vrai test sur téléphone). Fix: déclencher l'action sur touchend (avec
+// son propre preventDefault, qui annule bien le click fantôme qui suivrait)
+// pour le tactile, et garder "click" pour la souris/clavier (desktop).
+function bindTap(el, action) {
   el.addEventListener("mousedown", (e) => e.preventDefault());
   el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+  el.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    action();
+  });
+  el.addEventListener("click", action);
 }
 
 document.querySelectorAll("#mobile-keys button[data-key]").forEach((btn) => {
-  preventFocusSteal(btn);
-  btn.addEventListener("click", () => {
+  bindTap(btn, () => {
     socket.emit("ssh_input", { data: SPECIAL_KEYS[btn.dataset.key] });
     if (term) term.focus();
   });
 });
 
 if (ctrlBtn) {
-  preventFocusSteal(ctrlBtn);
-  ctrlBtn.addEventListener("click", () => {
+  bindTap(ctrlBtn, () => {
     ctrlSticky = !ctrlSticky;
     ctrlBtn.classList.toggle("active", ctrlSticky);
     if (term) term.focus();

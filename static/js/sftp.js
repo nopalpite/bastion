@@ -373,20 +373,33 @@ editorSaveBtn.addEventListener("click", () => {
 // séquence d'échappement à envoyer, on appelle directement ses commandes
 // natives (execCommand) plutôt que de réémettre une frappe clavier.
 
+// preventDefault() sur touchstart (pour ne pas voler le focus de l'éditeur
+// au tap) supprime aussi, sur la plupart des navigateurs mobiles, le click
+// synthétique qui suit normalement un tap — se reposer uniquement sur
+// "click" laissait ces boutons sans aucun effet au toucher (jamais repéré
+// en test desktop, où mousedown/click suffisent). Fix: déclencher l'action
+// sur touchend (avec son propre preventDefault, qui annule bien le click
+// fantôme qui suivrait) pour le tactile, et garder "click" pour la souris.
+function bindTap(el, action) {
+  el.addEventListener("mousedown", (e) => e.preventDefault());
+  el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+  el.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    action();
+  });
+  el.addEventListener("click", action);
+}
+
 const editorKeysBar = document.getElementById("editor-mobile-keys");
 
 if (editorKeysBar) {
   editorKeysBar.querySelectorAll("button[data-cmd]").forEach((btn) => {
     const cmd = btn.dataset.cmd;
     if (cmd === "dismissKeyboard") {
-      // Seul bouton où perdre le focus est le but (masquer le clavier
-      // virtuel) — pas de preventDefault ici, contrairement aux autres.
-      btn.addEventListener("click", () => editorCM.getInputField().blur());
+      bindTap(btn, () => editorCM.getInputField().blur());
       return;
     }
-    btn.addEventListener("mousedown", (e) => e.preventDefault());
-    btn.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
-    btn.addEventListener("click", () => {
+    bindTap(btn, () => {
       editorCM.execCommand(cmd);
       editorCM.focus();
     });
