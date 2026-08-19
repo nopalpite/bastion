@@ -216,6 +216,42 @@ Puis ouvrez `http://localhost:5000`.
 
 ## Lancement avec Docker
 
+Le fichier `docker-compose.yml` est déjà fourni à la racine du dépôt.
+Contenu à adapter (au minimum les variables
+`BASTION_SECRET_KEY` / `BASTION_ADMIN_PASSWORD`, et `BASTION_CREDENTIALS_KEY`
+si vous voulez mémoriser des identifiants SSH) :
+
+```yaml
+services:
+  bastion:
+    build: .
+    container_name: bastion
+    # network_mode: host = pas de NAT, le conteneur voit exactement les
+    # mêmes interfaces/routes que le host. Recommandé pour un bastion:
+    # évite les surprises de routage vers les réseaux cibles, quelle que
+    # soit la topologie (mono ou multi-interfaces/VLAN).
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - BASTION_SECRET_KEY=change-moi-en-production
+      - BASTION_ADMIN_USER=admin
+      - BASTION_ADMIN_PASSWORD=change-moi
+      - BASTION_WEBSOCKIFY_PORT=6080
+      # Vide par défaut (connexion VNC directe sur le port ci-dessus).
+      # À définir (ex: /vnc-ws/) si vous passez par un reverse proxy TLS
+      # qui fait suivre ce chemin vers 127.0.0.1:6080 — voir la section
+      # "Derrière un reverse proxy (TLS)" du README.
+      - BASTION_WEBSOCKIFY_PATH=
+      # Sans cette clé, la mémorisation des identifiants SSH est désactivée.
+      # Générer avec: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - BASTION_CREDENTIALS_KEY=
+    volumes:
+      # Monter l'inventaire en externe pour le modifier sans rebuild
+      - ./machines.yaml:/app/machines.yaml
+      # Persister les plans de salle uploadés (sinon perdus au rebuild)
+      - ./data/maps:/app/static/uploads/maps
+```
+
 ```bash
 docker compose up --build -d
 ```
