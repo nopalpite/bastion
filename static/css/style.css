@@ -698,6 +698,21 @@ form button[type="submit"] { margin-top: 24px; }
   display: flex;
   flex-direction: column;
   padding: 20px;
+  /* Garde-fou: si un enfant déborde malgré le flex/height:0 de
+     .CodeMirror plus bas (ex: nouvelle rangée ajoutée sans y repenser),
+     il est coupé plutôt que de rendre toute la boîte scrollable — ce qui
+     entraînerait la barre de touches et les boutons Enregistrer/Fermer
+     hors champ avec lui, plutôt que de ne laisser défiler que le code. */
+  overflow: hidden;
+}
+
+/* Empêche la page de défiler derrière la modale pendant qu'elle est
+   ouverte (voir fbOpenEditor/fbCloseEditor dans sftp.js) — sans ça, sur
+   mobile, le comportement "faire défiler jusqu'au champ actif" du
+   clavier virtuel peut scroller le document sous-jacent plutôt que
+   seulement le code dans CodeMirror. */
+body.modal-open {
+  overflow: hidden;
 }
 .editor-modal-header {
   display: flex;

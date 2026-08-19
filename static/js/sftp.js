@@ -339,7 +339,9 @@ function fbOpenEditor(path, name) {
   editorMessage.textContent = "Chargement...";
   editorMessage.classList.remove("error");
   editorModal.style.display = "flex";
+  document.body.classList.add("modal-open");
   fbSetEditorMode(name);
+  syncEditorModalViewport();
   // CodeMirror mesure mal son contenu tant qu'il est caché (display:none) —
   // on force un recalcul une fois la modale affichée.
   editorCM.refresh();
@@ -351,8 +353,36 @@ function fbCloseEditor() {
     return;
   }
   editorModal.style.display = "none";
+  editorModal.style.height = "";
+  editorModal.style.top = "";
+  document.body.classList.remove("modal-open");
   editorCurrentPath = null;
   editorDirty = false;
+}
+
+// --- Adapter la modale au clavier virtuel (mobile) -------------------------
+//
+// .modal-overlay est en position: fixed; inset: 0, dimensionné sur le
+// viewport "layout" — mais sur mobile, l'apparition du clavier virtuel ne
+// redimensionne pas toujours ce viewport layout (notamment Chrome Android):
+// la modale garde alors sa taille d'avant clavier, et son bas (barre de
+// touches, boutons Enregistrer/Fermer) se retrouve caché sous le clavier
+// plutôt que réellement scrollable — avec une compensation différente
+// encore d'un navigateur à l'autre (d'où le clavier qui semble "avaler"
+// les boutons sur l'un, et un défilement erratique sur l'autre). L'API
+// VisualViewport donne la taille RÉELLEMENT visible en temps réel: on
+// force la modale à toujours correspondre exactement à cette zone.
+function syncEditorModalViewport() {
+  if (!window.visualViewport || editorModal.style.display === "none") return;
+  const vv = window.visualViewport;
+  editorModal.style.height = `${vv.height}px`;
+  editorModal.style.top = `${vv.offsetTop}px`;
+  editorCM.refresh();
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncEditorModalViewport);
+  window.visualViewport.addEventListener("scroll", syncEditorModalViewport);
 }
 
 document.getElementById("editor-close-btn").addEventListener("click", fbCloseEditor);
