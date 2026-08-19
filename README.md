@@ -283,7 +283,7 @@ Registry (voir `.github/workflows/docker-build.yml`). Pour l'utiliser sans
 build local, remplacez `build: .` par `image:` dans `docker-compose.yml` :
 
 ```yaml
-    image: ghcr.io/nopalpite/bastion:edge   # ou un tag de version, ex: 1.2.0
+    image: ghcr.io/nopalpite/bastion:latest   # ou un tag de version, ex: 1.2.0
 ```
 
 ### Build sur ARM (Apple Silicon, Raspberry Pi...)

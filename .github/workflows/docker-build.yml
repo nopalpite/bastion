@@ -40,12 +40,17 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # edge: dernier commit de main. Un tag "vX.Y.Z" produit aussi
-          # automatiquement les tags "X.Y" et "latest".
+          # latest: dernier commit de main (pas de tags de version dans ce
+          # repo pour l'instant, donc pas la distinction Docker habituelle
+          # "latest = dernière release stable" — ici latest suit juste
+          # main). flavor latest=false: évite qu'un futur tag "vX.Y.Z"
+          # revendique aussi "latest" en même temps que main, ce qui
+          # rendrait le tag ambigu entre les deux déclencheurs.
           tags: |
-            type=edge
+            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          flavor: latest=false
 
       - name: Build (and push outside PRs)
         uses: docker/build-push-action@v6
