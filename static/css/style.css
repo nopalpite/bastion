@@ -219,7 +219,7 @@ a { color: inherit; }
 }
 .session-header .machine-name { color: var(--text); }
 
-#terminal { padding: 12px; height: 100%; box-sizing: border-box; }
+#terminal { padding: 12px; flex: 1; min-height: 0; box-sizing: border-box; }
 
 /* --- terminal + colonne de fichiers --- */
 
@@ -230,6 +230,42 @@ a { color: inherit; }
 .terminal-pane {
   flex: 1;
   min-width: 0; /* évite que xterm ne pousse le layout en overflow */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Barre de touches spéciales, absentes des claviers virtuels mobiles
+   (Tab/Échap/Ctrl/flèches...) — cachée par défaut, activée uniquement
+   sous le point de rupture mobile (voir media query plus bas): sur
+   desktop, le clavier physique fournit déjà ces touches. */
+.mobile-keys {
+  display: none;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  -webkit-overflow-scrolling: touch;
+}
+.mobile-keys button {
+  flex-shrink: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+}
+.mobile-keys button:active {
+  background: rgba(255,255,255,0.06);
+}
+.mobile-keys button.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .file-browser {
@@ -371,6 +407,7 @@ a { color: inherit; }
   }
   .resize-handle { display: none; } /* le drag horizontal n'a pas de sens en layout empilé */
   .terminal-pane { flex: 1; min-height: 0; }
+  .mobile-keys { display: flex; }
 }
 
 .connect-form {

@@ -1,6 +1,8 @@
 const socket = io();
 let term = null;
 let fitAddon = null;
+let ctrlSticky = false;
+const ctrlBtn = document.getElementById("mk-ctrl");
 
 // Extrait le chemin d'une charge utile OSC 7 ("file://hostname/chemin").
 // Convention standard utilisée par de nombreux terminaux (iTerm2, VS
@@ -83,7 +85,20 @@ function openTerminal() {
   term.open(termEl);
   fitAddon.fit();
 
-  term.onData((data) => socket.emit("ssh_input", { data }));
+  term.onData((data) => {
+    if (ctrlSticky) {
+      ctrlSticky = false;
+      if (ctrlBtn) ctrlBtn.classList.remove("active");
+      // Un clavier virtuel mobile n'a pas de vraie touche Ctrl à maintenir:
+      // le bouton "Ctrl" arme un état pour la prochaine frappe seulement,
+      // qu'on convertit ici en son équivalent (Ctrl+A..Z = 0x01-0x1a).
+      data = Array.from(data).map((ch) => {
+        const code = ch.toLowerCase().charCodeAt(0);
+        return (code >= 97 && code <= 122) ? String.fromCharCode(code - 96) : ch;
+      }).join("");
+    }
+    socket.emit("ssh_input", { data });
+  });
 
   // Le shell distant doit être configuré pour émettre cette séquence à
   // chaque prompt (voir README, section "Suivi du répertoire courant")
@@ -197,3 +212,45 @@ socket.on("ssh_closed", () => {
   handle.addEventListener("pointerup", endDrag);
   handle.addEventListener("pointercancel", endDrag);
 })();
+
+// --- Touches spéciales (mobile) ------------------------------------------
+//
+// Séquences d'échappement standard xterm en mode normal (correspondent à
+// ce qu'un vrai clavier physique enverrait) — voir SPECIAL_KEYS ci-dessous.
+// mousedown/touchstart avec preventDefault(): un tap sur ces boutons ne
+// doit pas voler le focus du terminal, sinon le clavier virtuel se ferme.
+
+const SPECIAL_KEYS = {
+  Escape: "\x1b",
+  Tab: "\t",
+  ArrowUp: "\x1b[A",
+  ArrowDown: "\x1b[B",
+  ArrowRight: "\x1b[C",
+  ArrowLeft: "\x1b[D",
+  Home: "\x1b[H",
+  End: "\x1b[F",
+  PageUp: "\x1b[5~",
+  PageDown: "\x1b[6~",
+};
+
+function preventFocusSteal(el) {
+  el.addEventListener("mousedown", (e) => e.preventDefault());
+  el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+}
+
+document.querySelectorAll("#mobile-keys button[data-key]").forEach((btn) => {
+  preventFocusSteal(btn);
+  btn.addEventListener("click", () => {
+    socket.emit("ssh_input", { data: SPECIAL_KEYS[btn.dataset.key] });
+    if (term) term.focus();
+  });
+});
+
+if (ctrlBtn) {
+  preventFocusSteal(ctrlBtn);
+  ctrlBtn.addEventListener("click", () => {
+    ctrlSticky = !ctrlSticky;
+    ctrlBtn.classList.toggle("active", ctrlSticky);
+    if (term) term.focus();
+  });
+}
