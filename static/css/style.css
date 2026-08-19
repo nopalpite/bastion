@@ -678,10 +678,20 @@ form button[type="submit"] { margin-top: 24px; }
      centré avec une hauteur en vh se comporte mal dès que le clavier
      virtuel apparaît (les navigateurs mobiles ne recalculent pas tous
      vh correctement dans ce cas) — le plein écran évite le problème
-     en laissant le navigateur gérer la zone visible normalement. */
+     en laissant le navigateur gérer la zone visible normalement.
+
+     100% plutôt que 100vw/100vh: le parent (.modal-overlay) est déjà
+     en position: fixed; inset: 0, donc plaqué exactement sur le
+     viewport visible. Utiliser vw/vh ici recalcule une taille à part,
+     qui peut différer de celle du parent — sur Firefox mobile, 100vh
+     se base sur le viewport "layout" (barre d'adresse cachée), plus
+     grand que la zone réellement visible: la boîte débordait alors du
+     conteneur centré, poussant l'en-tête et les boutons hors écran
+     (visible uniquement: le fond grisé). 100% élimine l'écart en
+     héritant directement de la taille réelle du parent. */
   .editor-modal-box {
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     max-width: none;
     max-height: none;
     border-radius: 0;
