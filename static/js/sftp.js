@@ -373,6 +373,25 @@ editorSaveBtn.addEventListener("click", () => {
 // séquence d'échappement à envoyer, on appelle directement ses commandes
 // natives (execCommand) plutôt que de réémettre une frappe clavier.
 
+// Toast de debug: confirme qu'un appui a bien été reçu par le navigateur
+// (le fix précédent, basé sur touchend, n'a pas suffi — ce toast sert à
+// voir si le tap est détecté du tout, ou si l'action derrière plante).
+// À retirer une fois le bug identifié.
+function showToast(message, isError) {
+  let el = document.getElementById("debug-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "debug-toast";
+    el.className = "toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.classList.toggle("error", !!isError);
+  el.classList.add("visible");
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.remove("visible"), 3000);
+}
+
 // preventDefault() sur touchstart (pour ne pas voler le focus de l'éditeur
 // au tap) supprime aussi, sur la plupart des navigateurs mobiles, le click
 // synthétique qui suit normalement un tap — se reposer uniquement sur
@@ -380,14 +399,23 @@ editorSaveBtn.addEventListener("click", () => {
 // en test desktop, où mousedown/click suffisent). Fix: déclencher l'action
 // sur touchend (avec son propre preventDefault, qui annule bien le click
 // fantôme qui suivrait) pour le tactile, et garder "click" pour la souris.
-function bindTap(el, action) {
+function runTap(label, action) {
+  showToast(`Appui détecté: ${label}`);
+  try {
+    action();
+  } catch (err) {
+    showToast(`BUG (${label}): ${err.message}`, true);
+  }
+}
+
+function bindTap(el, label, action) {
   el.addEventListener("mousedown", (e) => e.preventDefault());
   el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
   el.addEventListener("touchend", (e) => {
     e.preventDefault();
-    action();
+    runTap(label, action);
   });
-  el.addEventListener("click", action);
+  el.addEventListener("click", () => runTap(label, action));
 }
 
 const editorKeysBar = document.getElementById("editor-mobile-keys");
@@ -396,10 +424,10 @@ if (editorKeysBar) {
   editorKeysBar.querySelectorAll("button[data-cmd]").forEach((btn) => {
     const cmd = btn.dataset.cmd;
     if (cmd === "dismissKeyboard") {
-      bindTap(btn, () => editorCM.getInputField().blur());
+      bindTap(btn, cmd, () => editorCM.getInputField().blur());
       return;
     }
-    bindTap(btn, () => {
+    bindTap(btn, cmd, () => {
       editorCM.execCommand(cmd);
       editorCM.focus();
     });

@@ -231,6 +231,25 @@ const SPECIAL_KEYS = {
   PageDown: "\x1b[6~",
 };
 
+// Toast de debug: confirme qu'un appui a bien été reçu par le navigateur
+// (le fix précédent, basé sur touchend, n'a pas suffi — ce toast sert à
+// voir si le tap est détecté du tout, ou si l'action derrière plante).
+// À retirer une fois le bug identifié.
+function showToast(message, isError) {
+  let el = document.getElementById("debug-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "debug-toast";
+    el.className = "toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.classList.toggle("error", !!isError);
+  el.classList.add("visible");
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.remove("visible"), 3000);
+}
+
 // Un tap sur ces boutons ne doit pas voler le focus du terminal, sinon le
 // clavier virtuel se ferme — d'où mousedown/touchstart avec preventDefault().
 // Mais preventDefault() sur touchstart supprime aussi, sur la plupart des
@@ -240,25 +259,34 @@ const SPECIAL_KEYS = {
 // un vrai test sur téléphone). Fix: déclencher l'action sur touchend (avec
 // son propre preventDefault, qui annule bien le click fantôme qui suivrait)
 // pour le tactile, et garder "click" pour la souris/clavier (desktop).
-function bindTap(el, action) {
+function runTap(label, action) {
+  showToast(`Appui détecté: ${label}`);
+  try {
+    action();
+  } catch (err) {
+    showToast(`BUG (${label}): ${err.message}`, true);
+  }
+}
+
+function bindTap(el, label, action) {
   el.addEventListener("mousedown", (e) => e.preventDefault());
   el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
   el.addEventListener("touchend", (e) => {
     e.preventDefault();
-    action();
+    runTap(label, action);
   });
-  el.addEventListener("click", action);
+  el.addEventListener("click", () => runTap(label, action));
 }
 
 document.querySelectorAll("#mobile-keys button[data-key]").forEach((btn) => {
-  bindTap(btn, () => {
+  bindTap(btn, btn.dataset.key, () => {
     socket.emit("ssh_input", { data: SPECIAL_KEYS[btn.dataset.key] });
     if (term) term.focus();
   });
 });
 
 if (ctrlBtn) {
-  bindTap(ctrlBtn, () => {
+  bindTap(ctrlBtn, "Ctrl", () => {
     ctrlSticky = !ctrlSticky;
     ctrlBtn.classList.toggle("active", ctrlSticky);
     if (term) term.focus();

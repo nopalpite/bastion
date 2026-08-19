@@ -1,3 +1,29 @@
+/* Toast de debug (voir bindTap() dans terminal.js/sftp.js): confirme
+   visuellement qu'un appui sur les touches spéciales mobiles a bien été
+   détecté, et affiche l'erreur en clair si l'action derrière plante. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  z-index: 500;
+  max-width: 90vw;
+  overflow-wrap: break-word;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.toast.visible { opacity: 1; }
+.toast.error { border-color: var(--down); color: var(--down); }
+
 :root {
   --bg: #0d1117;
   --bg-raised: #12181f;
