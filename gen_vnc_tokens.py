@@ -17,5 +17,15 @@ from store import load_machines
 
 for machine in load_machines():
     vnc_port = machine.get("vnc_port")
-    if vnc_port:
-        print(f"{machine['id']}: {machine['host']}:{vnc_port}")
+    if not vnc_port:
+        continue
+    if machine.get("vnc_tls"):
+        # Serveur chiffré VeNCrypt/TLS: noVNC ne peut pas lui parler
+        # directement (voir vnc_tls_bridge.py). On route vers le pont
+        # local plutôt que vers la machine cible - c'est lui qui fait la
+        # vraie connexion chiffrée de l'autre côté.
+        local_port = machine.get("vnc_tls_local_port")
+        if local_port:
+            print(f"{machine['id']}: 127.0.0.1:{local_port}")
+        continue
+    print(f"{machine['id']}: {machine['host']}:{vnc_port}")

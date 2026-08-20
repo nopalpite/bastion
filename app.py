@@ -160,11 +160,26 @@ def new_host():
         password = request.form.get("password") or None
         vnc_username = request.form.get("vnc_username") or None
         vnc_password = request.form.get("vnc_password") or None
+        vnc_tls = request.form.get("vnc_tls") == "on"
 
         if not name or not host or os_type not in ("linux", "windows"):
             return render_template(
                 "host_form.html", rooms=rooms,
                 error="Nom, hôte et OS sont obligatoires.",
+                credentials_enabled=credentials.credentials_enabled(),
+            )
+        if vnc_tls and not vnc_port:
+            return render_template(
+                "host_form.html", rooms=rooms,
+                error="Port VNC obligatoire pour activer le chiffrement VeNCrypt/TLS.",
+                credentials_enabled=credentials.credentials_enabled(),
+            )
+        if vnc_tls and (not credentials.credentials_enabled() or not vnc_password):
+            return render_template(
+                "host_form.html", rooms=rooms,
+                error="Un mot de passe VNC mémorisé est requis pour activer le chiffrement "
+                      "VeNCrypt/TLS (l'authentification a lieu côté serveur, pas de saisie "
+                      "interactive possible pour ce mode — voir le README).",
                 credentials_enabled=credentials.credentials_enabled(),
             )
 
@@ -176,6 +191,7 @@ def new_host():
             password=password if remember else None,
             vnc_username=vnc_username,
             vnc_password=vnc_password,
+            vnc_tls=vnc_tls,
         )
         return redirect(url_for("dashboard"))
 
@@ -236,11 +252,29 @@ def edit_host(machine_id):
         vnc_username = request.form.get("vnc_username") or None
         vnc_password = request.form.get("vnc_password") or None
         clear_vnc_password = request.form.get("clear_vnc_password") == "on"
+        vnc_tls = request.form.get("vnc_tls") == "on"
 
         if not name or not host or os_type not in ("linux", "windows"):
             return render_template(
                 "host_form.html", rooms=rooms, machine=machine,
                 error="Nom, hôte et OS sont obligatoires.",
+                credentials_enabled=credentials.credentials_enabled(),
+            )
+        if vnc_tls and not vnc_port:
+            return render_template(
+                "host_form.html", rooms=rooms, machine=machine,
+                error="Port VNC obligatoire pour activer le chiffrement VeNCrypt/TLS.",
+                credentials_enabled=credentials.credentials_enabled(),
+            )
+        has_effective_vnc_password = bool(vnc_password) or (
+            bool(machine.get("vnc_password")) and not clear_vnc_password
+        )
+        if vnc_tls and (not credentials.credentials_enabled() or not has_effective_vnc_password):
+            return render_template(
+                "host_form.html", rooms=rooms, machine=machine,
+                error="Un mot de passe VNC mémorisé est requis pour activer le chiffrement "
+                      "VeNCrypt/TLS (l'authentification a lieu côté serveur, pas de saisie "
+                      "interactive possible pour ce mode — voir le README).",
                 credentials_enabled=credentials.credentials_enabled(),
             )
 
@@ -254,6 +288,7 @@ def edit_host(machine_id):
             vnc_username=vnc_username,
             vnc_password=vnc_password,
             clear_vnc_password=clear_vnc_password,
+            vnc_tls=vnc_tls,
         )
         return redirect(url_for("dashboard"))
 

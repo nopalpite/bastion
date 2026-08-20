@@ -115,3 +115,49 @@ def test_set_machine_host_key(machines_file):
     store.set_machine_host_key(machine_id, "ssh-ed25519", "ZmFrZQ==")
     machine = store.get_machine(machine_id)
     assert machine["host_key"] == {"type": "ssh-ed25519", "key": "ZmFrZQ=="}
+
+
+def test_add_machine_with_vnc_tls_assigns_local_port(machines_file):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900, vnc_tls=True,
+    )
+    machine = store.get_machine(machine_id)
+    assert machine["vnc_tls"] is True
+    assert machine["vnc_tls_local_port"] >= store.VNC_TLS_BASE_PORT
+
+
+def test_add_machine_with_vnc_tls_assigns_distinct_ports(machines_file):
+    id1 = store.add_machine(
+        name="Srv1", os_type="linux", host="10.0.0.1", vnc_port=5900, vnc_tls=True,
+    )
+    id2 = store.add_machine(
+        name="Srv2", os_type="linux", host="10.0.0.2", vnc_port=5900, vnc_tls=True,
+    )
+    port1 = store.get_machine(id1)["vnc_tls_local_port"]
+    port2 = store.get_machine(id2)["vnc_tls_local_port"]
+    assert port1 != port2
+
+
+def test_update_machine_disabling_vnc_tls_clears_fields(machines_file):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900, vnc_tls=True,
+    )
+    store.set_machine_vnc_cert_fingerprint(machine_id, "abc123")
+
+    store.update_machine(
+        machine_id, name="Serveur", os_type="linux", host="10.0.0.1",
+        vnc_port=5900, vnc_tls=False,
+    )
+
+    machine = store.get_machine(machine_id)
+    assert "vnc_tls" not in machine
+    assert "vnc_tls_local_port" not in machine
+    assert "vnc_tls_cert_fingerprint" not in machine
+
+
+def test_set_machine_vnc_cert_fingerprint(machines_file):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900, vnc_tls=True,
+    )
+    store.set_machine_vnc_cert_fingerprint(machine_id, "deadbeef")
+    assert store.get_machine(machine_id)["vnc_tls_cert_fingerprint"] == "deadbeef"

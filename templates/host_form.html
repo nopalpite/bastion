@@ -122,6 +122,23 @@
   </label>
   {% endif %}
 
+  {% if credentials_enabled %}
+  <label class="checkbox-line">
+    <input type="checkbox" name="vnc_tls" {{ "checked" if machine and machine.vnc_tls else "" }}>
+    Serveur VNC chiffré (VeNCrypt/TLS — cas par défaut de RealVNC Server)
+  </label>
+  <p class="hint-box">
+    noVNC (dans le navigateur) ne sait pas parler VeNCrypt/TLS — cochez
+    ceci pour passer par un pont local qui fait cette négociation à sa
+    place (voir <code>vnc_tls_bridge.py</code> et la section VNC du
+    README). Nécessite le mot de passe VNC ci-dessus (l'authentification
+    a lieu côté serveur, pas de saisie interactive possible dans ce mode).
+    Le certificat du serveur est mémorisé à la première connexion (TOFU,
+    comme pour les clés d'hôte SSH) ; s'il change ensuite, la connexion
+    est refusée plutôt qu'acceptée silencieusement.
+  </p>
+  {% endif %}
+
   {% if not machine %}
   <div class="section-sep">Plan (si une salle est sélectionnée)</div>
   <p class="hint-box">
