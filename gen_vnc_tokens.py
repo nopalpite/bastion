@@ -2,8 +2,15 @@
 
 Websockify, lancé en mode multiplexé avec un plugin TokenFile, accepte une
 connexion websocket du type ws://host:6080/?token=<id_machine> et la
-redirige vers le host:port VNC réel correspondant, sans avoir à lancer un
-process websockify par machine.
+redirige vers l'adresse correspondante, sans avoir à lancer un process
+websockify par machine.
+
+Chaque machine avec un port VNC configuré est routée vers son pont local
+(vnc_tls_bridge.py, sur 127.0.0.1:<vnc_bridge_port>) plutôt que directement
+vers la machine cible — le pont sonde lui-même ce que le serveur propose à
+chaque connexion et s'adapte (relais transparent pour un serveur VNC
+"classique", négociation VeNCrypt/TLS complète sinon), façon vncviewer.
+Pas besoin de savoir à l'avance quel type de sécurité une machine utilise.
 
 Ce script régénère ce fichier à partir de machines.yaml. Relancez-le
 chaque fois que vous modifiez l'inventaire (le conteneur Docker le fait
@@ -16,16 +23,8 @@ Usage:
 from store import load_machines
 
 for machine in load_machines():
-    vnc_port = machine.get("vnc_port")
-    if not vnc_port:
+    if not machine.get("vnc_port"):
         continue
-    if machine.get("vnc_tls"):
-        # Serveur chiffré VeNCrypt/TLS: noVNC ne peut pas lui parler
-        # directement (voir vnc_tls_bridge.py). On route vers le pont
-        # local plutôt que vers la machine cible - c'est lui qui fait la
-        # vraie connexion chiffrée de l'autre côté.
-        local_port = machine.get("vnc_tls_local_port")
-        if local_port:
-            print(f"{machine['id']}: 127.0.0.1:{local_port}")
-        continue
-    print(f"{machine['id']}: {machine['host']}:{vnc_port}")
+    bridge_port = machine.get("vnc_bridge_port")
+    if bridge_port:
+        print(f"{machine['id']}: 127.0.0.1:{bridge_port}")

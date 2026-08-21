@@ -117,47 +117,70 @@ def test_set_machine_host_key(machines_file):
     assert machine["host_key"] == {"type": "ssh-ed25519", "key": "ZmFrZQ=="}
 
 
-def test_add_machine_with_vnc_tls_assigns_local_port(machines_file):
+def test_add_machine_with_vnc_port_assigns_bridge_port(machines_file):
     machine_id = store.add_machine(
-        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900, vnc_tls=True,
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900,
     )
     machine = store.get_machine(machine_id)
-    assert machine["vnc_tls"] is True
-    assert machine["vnc_tls_local_port"] >= store.VNC_TLS_BASE_PORT
+    assert machine["vnc_bridge_port"] >= store.VNC_BRIDGE_BASE_PORT
 
 
-def test_add_machine_with_vnc_tls_assigns_distinct_ports(machines_file):
-    id1 = store.add_machine(
-        name="Srv1", os_type="linux", host="10.0.0.1", vnc_port=5900, vnc_tls=True,
-    )
-    id2 = store.add_machine(
-        name="Srv2", os_type="linux", host="10.0.0.2", vnc_port=5900, vnc_tls=True,
-    )
-    port1 = store.get_machine(id1)["vnc_tls_local_port"]
-    port2 = store.get_machine(id2)["vnc_tls_local_port"]
+def test_add_machine_with_vnc_port_assigns_distinct_bridge_ports(machines_file):
+    id1 = store.add_machine(name="Srv1", os_type="linux", host="10.0.0.1", vnc_port=5900)
+    id2 = store.add_machine(name="Srv2", os_type="linux", host="10.0.0.2", vnc_port=5900)
+    port1 = store.get_machine(id1)["vnc_bridge_port"]
+    port2 = store.get_machine(id2)["vnc_bridge_port"]
     assert port1 != port2
 
 
-def test_update_machine_disabling_vnc_tls_clears_fields(machines_file):
+def test_update_machine_removing_vnc_port_clears_bridge_fields(machines_file):
     machine_id = store.add_machine(
-        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900, vnc_tls=True,
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900,
     )
     store.set_machine_vnc_cert_fingerprint(machine_id, "abc123")
 
     store.update_machine(
-        machine_id, name="Serveur", os_type="linux", host="10.0.0.1",
-        vnc_port=5900, vnc_tls=False,
+        machine_id, name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=None,
     )
 
     machine = store.get_machine(machine_id)
-    assert "vnc_tls" not in machine
-    assert "vnc_tls_local_port" not in machine
+    assert "vnc_bridge_port" not in machine
     assert "vnc_tls_cert_fingerprint" not in machine
 
 
-def test_set_machine_vnc_cert_fingerprint(machines_file):
+def test_update_machine_keeps_same_bridge_port(machines_file):
     machine_id = store.add_machine(
-        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900, vnc_tls=True,
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900,
     )
+    original_port = store.get_machine(machine_id)["vnc_bridge_port"]
+
+    store.update_machine(
+        machine_id, name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5901,
+    )
+
+    assert store.get_machine(machine_id)["vnc_bridge_port"] == original_port
+
+
+def test_legacy_vnc_tls_fields_migrate_transparently_on_read(machines_file):
+    machines_file.write_text(
+        "rooms: []\n"
+        "machines:\n"
+        "  - id: legacy\n"
+        "    name: legacy\n"
+        "    os: linux\n"
+        "    host: 10.0.0.9\n"
+        "    vnc_port: 5900\n"
+        "    vnc_tls: true\n"
+        "    vnc_tls_local_port: 6100\n",
+        encoding="utf-8",
+    )
+    machine = store.get_machine("legacy")
+    assert machine["vnc_bridge_port"] == 6100
+    assert "vnc_tls_local_port" not in machine
+    assert "vnc_tls" not in machine
+
+
+def test_set_machine_vnc_cert_fingerprint(machines_file):
+    machine_id = store.add_machine(name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900)
     store.set_machine_vnc_cert_fingerprint(machine_id, "deadbeef")
     assert store.get_machine(machine_id)["vnc_tls_cert_fingerprint"] == "deadbeef"

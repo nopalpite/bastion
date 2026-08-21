@@ -23,53 +23,54 @@ dépendance lourde. Facile à lire, facile à étendre.
 - **Ajout d'hôtes et de salles depuis l'interface** (`+ Hôte` / `+ Salle`), en plus de l'édition directe de `machines.yaml`. Édition et suppression possibles ensuite.
 - **Plan interactif par salle** (`/map/<salle>`) : importez une image de plan, placez les machines dessus par glisser-déposer (souris et tactile), cliquez sur une machine pour ouvrir un accès rapide SSH/VNC ou déclencher un reboot/shutdown.
 - **Terminal SSH** dans le navigateur, avec navigateur de fichiers SFTP dans une colonne latérale (façon MobaXterm).
-- **VNC** dans le navigateur via noVNC — voir la limite connue ci-dessous pour les serveurs VNC chiffrés.
+- **VNC** dans le navigateur via noVNC, y compris les serveurs chiffrés (VeNCrypt/TLS, RealVNC...) — voir le pont VNC générique ci-dessous.
 - **Épinglage de la clé d'hôte SSH (TOFU)** : la première connexion à une machine mémorise sa clé publique ; si elle change ensuite, la connexion est bloquée avec une alerte explicite.
 - **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion.
 
-## VNC chiffré (VeNCrypt / RealVNC)
+## Pont VNC générique (`vnc_tls_bridge.py`)
 
-noVNC (réimplémentation du protocole RFB en JavaScript pur, exécutée dans
-le navigateur) ne sait parler que les types de sécurité RFB "classiques" :
-aucune authentification, ou mot de passe VNC standard. Il ne sait **pas**
-négocier VeNCrypt/TLS (types de sécurité X509*), qui bascule en
-chiffrement TLS *au milieu* de la connexion TCP (façon STARTTLS) — pas un
-réglage manquant, un morceau de protocole qu'un navigateur ne peut
-fondamentalement pas implémenter (pas d'accès à un socket brut, pas de
-renégociation TLS en cours de connexion depuis du JS). C'est le
-comportement par défaut de **RealVNC Server** (préinstallé sur Raspberry
-Pi OS) sur certaines configurations.
+Toute machine avec un port VNC configuré passe par ce pont plutôt que
+d'être jointe directement — il tourne comme process séparé dans le
+conteneur (voir `supervisord.conf`), un port local par machine (assigné
+automatiquement, voir `store.py`). À chaque connexion, il **sonde le vrai
+serveur et s'adapte**, comme le ferait un vrai client VNC (RealVNC Viewer,
+TigerVNC, AVNC...) plutôt que noVNC seul :
+- **Serveur VNC "classique"** (aucune authentification, ou mot de passe
+  VNC standard — le cas le plus courant) : relais transparent, sans
+  aucune interprétation du protocole. noVNC négocie directement avec le
+  vrai serveur à travers le pont, y compris la demande interactive du mot
+  de passe dans le navigateur si rien n'est mémorisé — exactement comme
+  sans ce pont.
+- **Serveur VeNCrypt/TLS** (chiffré — comportement par défaut de
+  **RealVNC Server**, préinstallé sur Raspberry Pi OS, sur certaines
+  configurations) : noVNC (réimplémentation du protocole RFB en
+  JavaScript pur, exécutée dans le navigateur) ne peut fondamentalement
+  pas le négocier lui-même — ce type de sécurité bascule en chiffrement
+  TLS *au milieu* de la connexion TCP (façon STARTTLS), et un navigateur
+  ne donne à du JS ni accès à un socket brut, ni la possibilité de
+  renégocier TLS en cours de connexion. Le pont fait alors, côté serveur,
+  ce qu'un vrai client ferait : négocier VeNCrypt + TLS + l'authentification
+  avec la machine cible, puis exposer la session en VNC non chiffré au
+  reste de la chaîne (`websockify`/noVNC).
+- **Aucun des deux** (types plus exotiques — ARD, MSLogon, SASL seuls...) :
+  échec propre, avec la liste des types proposés dans les logs
+  (`docker logs bastion 2>&1 | grep vnc_tls_bridge`) — voir les options de
+  contournement plus bas.
 
-**Symptôme sans le pont ci-dessous** : `Failed when connecting:
-Unsupported security types (types: XXX)` dans la console du navigateur.
+**Rien à configurer par machine** — pas de case à cocher, le pont
+détermine lui-même à chaque connexion quel chemin prendre. Seule exigence
+dans le cas VeNCrypt précisément : un mot de passe VNC mémorisé pour cet
+hôte (`BASTION_CREDENTIALS_KEY` configurée, voir plus bas) — **l'authentification
+a lieu côté serveur** dans ce cas (le pont s'authentifie lui-même auprès
+de la machine cible), pas de saisie interactive possible, contrairement
+au cas "classique" ci-dessus. Contrepartie utile : pour ces machines-là,
+le mot de passe VNC **ne transite plus du tout vers le navigateur** —
+l'authentification se fait entièrement côté backend (voir la note sur les
+identifiants VNC mémorisés dans les fonctionnalités ci-dessus, qui ne
+s'applique donc pas à ce cas précis).
 
-### Le pont VeNCrypt/TLS (`vnc_tls_bridge.py`)
-
-Bastion fait, côté serveur, ce qu'un vrai client VNC (RealVNC Viewer,
-TigerVNC, AVNC...) fait déjà nativement : négocier VeNCrypt + TLS +
-l'authentification avec la machine cible, puis exposer la session en VNC
-non chiffré à `websockify`/noVNC — un vrai pont, pas un contournement du
-chiffrement. Tourne en tant que process séparé dans le conteneur (voir
-`supervisord.conf`), un port local par machine concernée.
-
-**Pour l'activer** : dans le formulaire d'un hôte, une fois un port VNC
-renseigné, cochez "Serveur VNC chiffré (VeNCrypt/TLS)". Deux prérequis,
-imposés par construction et vérifiés à la sauvegarde :
-- `BASTION_CREDENTIALS_KEY` configurée (voir plus bas) ;
-- un mot de passe VNC mémorisé pour cet hôte — **l'authentification a
-  lieu côté serveur** (le pont s'authentifie lui-même auprès de la
-  machine cible), pas de saisie interactive possible dans ce mode
-  (contrairement au VNC non chiffré, où noVNC peut demander le mot de
-  passe à la volée dans le navigateur si rien n'est mémorisé).
-
-Cette contrainte a une contrepartie utile : pour ces machines, le mot de
-passe VNC **ne transite plus du tout vers le navigateur** — l'authentification
-se fait entièrement côté backend, contrairement au VNC non chiffré (voir
-la note sur les identifiants VNC mémorisés dans les fonctionnalités
-ci-dessus, qui ne s'applique donc pas ici).
-
-**Certificat serveur** : ces certificats sont presque toujours
-auto-signés (générés par le serveur VNC lui-même) — il n'y a pas
+**Certificat serveur (cas VeNCrypt)** : ces certificats sont presque
+toujours auto-signés (générés par le serveur VNC lui-même) — il n'y a pas
 d'autorité de confiance à interroger. Le pont épingle l'empreinte du
 certificat à la première connexion (TOFU, même principe que pour les
 clés d'hôte SSH) : s'il change ensuite, la connexion est refusée plutôt
@@ -78,7 +79,7 @@ légitime (certificat régénéré, réinstallation), supprimez le champ
 `vnc_tls_cert_fingerprint` de la machine dans `machines.yaml` — la
 prochaine connexion se comportera comme une première connexion.
 
-**Limite connue** : seules les variantes X509 de VeNCrypt sont gérées
+**Limite connue** : côté VeNCrypt, seules les variantes X509 sont gérées
 (`X509None`/`X509Vnc`/`X509Plain`) — pas les variantes TLS anonymes
 (`TLSNone`/`TLSVnc`/`TLSPlain`), qui demandent des suites de chiffrement
 que les bibliothèques TLS modernes désactivent par défaut. RealVNC
@@ -118,7 +119,7 @@ bastion/
   sftp_ws.py               navigateur de fichiers (colonne latérale du terminal)
   ssh_actions.py           actions ponctuelles (reboot/shutdown) via SSH
   gen_vnc_tokens.py        génère le fichier de tokens pour websockify
-  vnc_tls_bridge.py        pont VeNCrypt/TLS pour serveurs VNC chiffrés (RealVNC...)
+  vnc_tls_bridge.py        pont VNC générique (relais transparent, ou VeNCrypt/TLS si besoin)
   debug_vnc_security.py    diagnostic RFB autonome (types de sécurité VNC)
   machines.yaml           inventaire: salles + machines
   templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc)

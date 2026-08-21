@@ -41,7 +41,23 @@ def _load():
         data = yaml.safe_load(f) or {}
     data.setdefault("rooms", [])
     data.setdefault("machines", [])
+    for m in data["machines"]:
+        _migrate_legacy_vnc_bridge_fields(m)
     return data
+
+
+def _migrate_legacy_vnc_bridge_fields(machine):
+    """Migration transparente (en mémoire seulement) depuis l'ancien schéma
+    où seules les machines explicitement cochées "VeNCrypt/TLS" avaient un
+    pont local (vnc_tls / vnc_tls_local_port) — le pont est désormais
+    générique, toute machine avec un vnc_port en a un (voir
+    vnc_tls_bridge.py). Le fichier n'est réécrit avec les nouveaux noms
+    qu'à la prochaine modification via l'interface, mais toute lecture (y
+    compris par gen_vnc_tokens.py / vnc_tls_bridge.py) voit déjà le nouveau
+    nom entre-temps."""
+    if "vnc_tls_local_port" in machine and "vnc_bridge_port" not in machine:
+        machine["vnc_bridge_port"] = machine.pop("vnc_tls_local_port")
+    machine.pop("vnc_tls", None)
 
 
 def _save(data):
@@ -136,17 +152,20 @@ def set_room_map_image(room_id, filename):
         _save(data)
 
 
-VNC_TLS_BASE_PORT = 6100
+VNC_BRIDGE_BASE_PORT = 6100
 
 
-def _next_vnc_tls_port(data):
-    """Port local (127.0.0.1) attribué à une machine avec vnc_tls activé —
+def _next_vnc_bridge_port(data):
+    """Port local (127.0.0.1) attribué à toute machine ayant un vnc_port —
     c'est sur ce port que vnc_tls_bridge.py écoute pour cette machine
     précise (un port distinct par machine, pour que websockify sache
-    laquelle joindre — voir gen_vnc_tokens.py). Attribution simple: le
-    premier libre à partir de VNC_TLS_BASE_PORT."""
-    used = {m["vnc_tls_local_port"] for m in data["machines"] if m.get("vnc_tls_local_port")}
-    port = VNC_TLS_BASE_PORT
+    laquelle joindre — voir gen_vnc_tokens.py). Le pont sonde lui-même ce
+    que le serveur propose à chaque connexion (relais transparent, ou
+    négociation VeNCrypt complète si nécessaire — voir vnc_tls_bridge.py),
+    donc aucune configuration à faire au cas par cas ici. Attribution
+    simple: le premier port libre à partir de VNC_BRIDGE_BASE_PORT."""
+    used = {m["vnc_bridge_port"] for m in data["machines"] if m.get("vnc_bridge_port")}
+    port = VNC_BRIDGE_BASE_PORT
     while port in used:
         port += 1
     return port
@@ -154,7 +173,7 @@ def _next_vnc_tls_port(data):
 
 def add_machine(name, os_type, host, ssh_port=22, vnc_port=None, rdp_port=None,
                  room_id=None, username=None, password=None,
-                 vnc_username=None, vnc_password=None, vnc_tls=False):
+                 vnc_username=None, vnc_password=None):
     with _lock:
         data = _load()
         existing = {m["id"] for m in data["machines"]}
@@ -174,12 +193,7 @@ def add_machine(name, os_type, host, ssh_port=22, vnc_port=None, rdp_port=None,
             encrypted_vnc_password = credentials.encrypt(vnc_password) if vnc_password else None
             if encrypted_vnc_password:
                 entry["vnc_password"] = encrypted_vnc_password
-            if vnc_tls:
-                # voir vnc_tls_bridge.py: serveur VNC chiffré VeNCrypt/TLS
-                # (RealVNC par défaut) que noVNC ne peut pas parler
-                # directement — un pont local fait le travail à sa place.
-                entry["vnc_tls"] = True
-                entry["vnc_tls_local_port"] = _next_vnc_tls_port(data)
+            entry["vnc_bridge_port"] = _next_vnc_bridge_port(data)
         if os_type == "windows":
             entry["rdp_port"] = int(rdp_port) if rdp_port else 3389
         if room_id:
@@ -246,7 +260,7 @@ def set_machine_vnc_cert_fingerprint(machine_id, fingerprint):
 def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
                     rdp_port=None, room_id=None, username=None, password=None,
                     clear_credentials=False, vnc_username=None, vnc_password=None,
-                    clear_vnc_password=False, vnc_tls=False):
+                    clear_vnc_password=False):
     """Met à jour une machine existante en place (id inchangé même si le
     nom change). Les identifiants ne sont modifiés que si username+password
     sont fournis, ou effacés si clear_credentials est vrai — sinon ils
@@ -274,20 +288,13 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
                     encrypted_vnc_password = credentials.encrypt(vnc_password)
                     if encrypted_vnc_password:
                         m["vnc_password"] = encrypted_vnc_password
-                if vnc_tls:
-                    m["vnc_tls"] = True
-                    if not m.get("vnc_tls_local_port"):
-                        m["vnc_tls_local_port"] = _next_vnc_tls_port(data)
-                else:
-                    m.pop("vnc_tls", None)
-                    m.pop("vnc_tls_local_port", None)
-                    m.pop("vnc_tls_cert_fingerprint", None)
+                if not m.get("vnc_bridge_port"):
+                    m["vnc_bridge_port"] = _next_vnc_bridge_port(data)
             else:
                 m.pop("vnc_port", None)
                 m.pop("vnc_username", None)
                 m.pop("vnc_password", None)
-                m.pop("vnc_tls", None)
-                m.pop("vnc_tls_local_port", None)
+                m.pop("vnc_bridge_port", None)
                 m.pop("vnc_tls_cert_fingerprint", None)
 
             if os_type == "windows":

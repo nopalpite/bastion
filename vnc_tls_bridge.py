@@ -1,11 +1,13 @@
-"""Pont VNC pour serveurs chiffrés VeNCrypt/TLS (X509) — ce que noVNC ne
-sait pas parler nativement.
+"""Pont VNC générique, façon vncviewer : toute machine avec un port VNC
+configuré passe par ici, qui sonde ce que le serveur propose et s'adapte —
+relais transparent pour les types de sécurité "classiques" (None, mot de
+passe VNC standard), négociation complète pour VeNCrypt/TLS (X509), que
+noVNC ne sait lui-même absolument pas parler.
 
-Contexte (voir aussi le README, section "Limite connue: VNC chiffré") :
-noVNC est une réimplémentation du protocole RFB en JavaScript pur, exécutée
-dans le navigateur. Il ne sait négocier que les types de sécurité RFB
-"classiques" (aucune authentification, ou mot de passe VNC standard) —
-il ne peut PAS parler VeNCrypt, parce que ça bascule la connexion en TLS
+Contexte (voir aussi le README, section "VNC chiffré") : noVNC est une
+réimplémentation du protocole RFB en JavaScript pur, exécutée dans le
+navigateur. Il ne sait négocier que les types de sécurité RFB "classiques"
+— il ne peut PAS parler VeNCrypt, parce que ça bascule la connexion en TLS
 *au milieu* du flux TCP (façon STARTTLS), et un navigateur ne donne à du
 JS ni accès à un socket brut, ni la possibilité de renégocier TLS en
 cours de connexion. Ce n'est pas un bug de noVNC, c'est une limite de la
@@ -14,19 +16,23 @@ configurations — un vrai client (RealVNC Viewer, TigerVNC, AVNC...) s'en
 sort très bien, parce qu'il a accès aux vrais sockets et à une vraie lib
 TLS, pas un navigateur.
 
-Ce module fait le travail qu'un vrai client ferait : il négocie VeNCrypt +
-TLS + l'authentification "interne" avec le serveur réel, exactement comme
-LibVNCClient (voir les commentaires détaillés plus bas — chaque étape a été
-vérifiée contre le code source de LibVNCClient, pas seulement contre la
-spec en prose, qui s'est révélée ambiguë/incomplète sur plusieurs points
-byte-exacts : LibVNC/libvncserver, src/libvncclient/tls_openssl.c
-(HandleVeNCryptAuth, ReadVeNCryptSecurityType) et src/common/vncauth.c +
-crypto_openssl.c pour le DES d'authentification VNC classique). Une fois
-la session ouverte côté serveur réel, ce pont n'a plus besoin de
-comprendre le protocole RFB : au-delà de ClientInit/ServerInit, les octets
-sont identiques qu'ils passent par TLS ou non — donc à partir de là, il se
-contente de relayer les octets bruts, dans les deux sens, sans plus les
-interpréter.
+Pour les serveurs "classiques" (la majorité), ce pont ne fait qu'un relais
+d'octets bruts sans rien interpréter — noVNC négocie directement avec le
+vrai serveur à travers lui, y compris la demande interactive de mot de
+passe dans le navigateur si rien n'est mémorisé, exactement comme sans ce
+pont. Seul le cas VeNCrypt déclenche un vrai travail : ce module négocie
+alors VeNCrypt + TLS + l'authentification "interne" avec le serveur réel,
+exactement comme LibVNCClient (voir les commentaires détaillés plus bas —
+chaque étape a été vérifiée contre le code source de LibVNCClient, pas
+seulement contre la spec en prose, qui s'est révélée ambiguë/incomplète
+sur plusieurs points byte-exacts : LibVNC/libvncserver,
+src/libvncclient/tls_openssl.c (HandleVeNCryptAuth,
+ReadVeNCryptSecurityType) et src/common/vncauth.c + crypto_openssl.c pour
+le DES d'authentification VNC classique). Une fois la session ouverte
+côté serveur réel, plus besoin de comprendre le protocole RFB non plus :
+au-delà de ClientInit/ServerInit, les octets sont identiques qu'ils
+passent par TLS ou non — donc à partir de là, même chemin: relais brut,
+dans les deux sens, sans plus rien interpréter.
 
 Épinglage de certificat façon TOFU (même principe que ssh_client.py pour
 les clés d'hôte SSH) : 1ère connexion, l'empreinte SHA-256 du certificat
@@ -55,9 +61,10 @@ Limites connues (documentées, pas des oublis) :
 
 Usage :
     python3 vnc_tls_bridge.py
-Lit machines.yaml, ouvre un port d'écoute local par machine ayant
-vnc_tls: true, et pour chaque connexion entrante (normalement de
-websockify, voir gen_vnc_tokens.py) fait le pont vers le vrai serveur.
+Lit machines.yaml, ouvre un port d'écoute local par machine ayant un
+vnc_port configuré, et pour chaque connexion entrante (normalement de
+websockify, voir gen_vnc_tokens.py) sonde le vrai serveur et fait le pont
+en conséquence.
 """
 import socket
 import ssl
@@ -167,30 +174,32 @@ def _read_server_version(sock):
     text = version.decode(errors="ignore").strip()
     try:
         _, ver = text.split(" ")
-        major, minor = (int(x) for x in ver.split("."))
+        (int(x) for x in ver.split("."))  # valide juste le format, "X.Y"
     except Exception as exc:  # noqa: BLE001
         raise VncBridgeError(f"Version RFB illisible: {text!r}") from exc
-    return major, minor
+    return version
 
 
-def _select_vencrypt(sock):
-    """Lit la liste des types de sécurité RFB "externes" et choisit
-    VeNCrypt. Lève VncBridgeError si le serveur ne le propose pas — ce
-    module n'a de raison d'être que pour ce cas précis, un serveur qui
-    propose déjà un type "classique" (None/VncAuth) fonctionne directement
-    avec noVNC, pas besoin de ce pont."""
-    count = _recv_exact(sock, 1)[0]
+def _peek_security_types(sock):
+    """Lit la liste des types de sécurité RFB "externes" proposés par le
+    serveur SANS encore en choisir un — sert à décider quel chemin prendre
+    (voir bridge_connection): un serveur qui propose déjà un type
+    "classique" (None/VncAuth) n'a besoin d'aucune négociation particulière
+    de notre part, seul VeNCrypt (chiffré) en a besoin. Retourne les octets
+    bruts (comptage + liste) en plus de la liste d'entiers, pour pouvoir
+    les rejouer tels quels vers noVNC dans le cas "classique"."""
+    count_byte = _recv_exact(sock, 1)
+    count = count_byte[0]
     if count == 0:
         reason_len = struct.unpack(">I", _recv_exact(sock, 4))[0]
         reason = _recv_exact(sock, reason_len).decode(errors="ignore")
         raise VncBridgeError(f"Le serveur refuse la connexion: {reason}")
-    types = list(_recv_exact(sock, count))
-    if SEC_TYPE_VENCRYPT not in types:
-        raise VncBridgeError(
-            f"Le serveur ne propose pas VeNCrypt (types proposés: {types}) — "
-            "ce pont ne sert à rien ici, connectez-vous directement."
-        )
-    _send_all(sock, bytes([SEC_TYPE_VENCRYPT]))
+    raw_types = _recv_exact(sock, count)
+    return count_byte, raw_types, list(raw_types)
+
+
+def _choose_security_type(sock, sec_type):
+    _send_all(sock, bytes([sec_type]))
 
 
 # --- Négociation VeNCrypt -----------------------------------------------
@@ -324,25 +333,54 @@ def _client_init_server_init(sock):
 
 # --- Point d'entrée: connexion complète vers le vrai serveur ------------
 
+def _probe(machine, timeout):
+    """Ouvre la connexion et lit juste assez pour savoir ce que le serveur
+    propose (version + liste de types de sécurité), sans encore s'engager
+    sur un type — voir bridge_connection, qui décide ensuite du chemin à
+    prendre. Le socket retourné reste ouvert, positionné juste après cette
+    liste."""
+    raw_sock = socket.create_connection((machine["host"], machine["vnc_port"]), timeout=timeout)
+    raw_sock.settimeout(timeout)
+    try:
+        raw_version = _read_server_version(raw_sock)
+        raw_count, raw_types, types = _peek_security_types(raw_sock)
+        return raw_sock, raw_version, raw_count, raw_types, types
+    except Exception:
+        raw_sock.close()
+        raise
+
+
+def _vencrypt_handshake(raw_sock, machine, pin_certificate, username, password):
+    """Suite de la négociation en supposant que le type de sécurité 19
+    (VeNCrypt) vient d'être choisi côté serveur (voir _choose_security_type
+    juste avant l'appel). Retourne (socket_prêt_pour_relais, server_init_bytes)."""
+    subtype = _negotiate_vencrypt_subtype(raw_sock)
+    tls_sock = _wrap_tls(raw_sock, machine, pin_certificate)
+    _do_inner_auth(tls_sock, subtype, username, password)
+    server_init = _client_init_server_init(tls_sock)
+    tls_sock.settimeout(None)  # le relais bidirectionnel n'a plus besoin de timeout
+    return tls_sock, server_init
+
+
 def connect_to_real_server(machine, timeout=8, pin_certificate=None):
     """Ouvre une connexion complète (négociation RFB + VeNCrypt + TLS +
-    authentification interne) vers le vrai serveur VNC de `machine`.
-    Retourne (socket_pret_pour_relais, server_init_bytes)."""
+    authentification interne) vers le vrai serveur VNC de `machine`, en
+    suppposant que VeNCrypt est nécessaire — lève VncBridgeError sinon.
+    Retourne (socket_pret_pour_relais, server_init_bytes).
+
+    Pour le cas général (le serveur peut proposer autre chose que
+    VeNCrypt), voir bridge_connection, qui fait le même travail mais
+    bascule en relais transparent si un type "classique" est disponible."""
     stored_password = machine.get("vnc_password")
     password = credentials.decrypt(stored_password) if stored_password else None
     username = machine.get("vnc_username")
 
-    raw_sock = socket.create_connection((machine["host"], machine["vnc_port"]), timeout=timeout)
-    raw_sock.settimeout(timeout)
+    raw_sock, _raw_version, _raw_count, _raw_types, types = _probe(machine, timeout)
     try:
-        _read_server_version(raw_sock)
-        _select_vencrypt(raw_sock)
-        subtype = _negotiate_vencrypt_subtype(raw_sock)
-        tls_sock = _wrap_tls(raw_sock, machine, pin_certificate)
-        _do_inner_auth(tls_sock, subtype, username, password)
-        server_init = _client_init_server_init(tls_sock)
-        tls_sock.settimeout(None)  # le relais bidirectionnel n'a plus besoin de timeout
-        return tls_sock, server_init
+        if SEC_TYPE_VENCRYPT not in types:
+            raise VncBridgeError(f"Le serveur ne propose pas VeNCrypt (types proposés: {types}).")
+        _choose_security_type(raw_sock, SEC_TYPE_VENCRYPT)
+        return _vencrypt_handshake(raw_sock, machine, pin_certificate, username, password)
     except Exception:
         raw_sock.close()
         raise
@@ -375,14 +413,14 @@ def make_cert_pin_checker():
     return pin_certificate
 
 
-# --- Côté noVNC: mini serveur RFB en clair -------------------------------
+# --- Côté noVNC: mini serveur RFB en clair (cas VeNCrypt) ----------------
 #
-# noVNC ne sait pas qu'il parle à un pont plutôt qu'à un vrai serveur — il
-# lui faut donc une négociation RFB normale, minimale, qui n'offre qu'un
-# type de sécurité "None": l'authentification a déjà eu lieu côté pont vers
-# le vrai serveur (voir connect_to_real_server), il n'y a plus besoin d'en
-# redemander une ici. L'accès à cette étape est de toute façon déjà
-# protégé (connexion Bastion authentifiée + réseau interne).
+# noVNC ne sait pas qu'il parle à un pont plutôt qu'à un vrai serveur — une
+# fois l'authentification VeNCrypt faite côté pont (voir _vencrypt_handshake),
+# il lui faut une négociation RFB normale, minimale, qui n'offre qu'un type
+# de sécurité "None": inutile d'en redemander une, c'est déjà fait.
+# L'accès à cette étape est de toute façon déjà protégé (connexion Bastion
+# authentifiée + réseau interne).
 
 def _serve_plain_handshake(sock):
     _send_all(sock, b"RFB 003.008\n")
@@ -416,35 +454,92 @@ def _relay(a, b):
                 pass
 
 
-def bridge_connection(client_sock, machine, pin_certificate):
-    """Gère une connexion entrante de websockify de bout en bout: poignée
-    de main côté noVNC, négociation complète côté vrai serveur, puis
-    relais tant que la session dure."""
-    try:
-        _serve_plain_handshake(client_sock)
-        server_sock, server_init = connect_to_real_server(machine, pin_certificate=pin_certificate)
-    except Exception as exc:  # noqa: BLE001
-        # Pas de manière propre de faire remonter le détail à noVNC à ce
-        # stade (il n'a pas encore reçu de ServerInit) — on log côté
-        # serveur (voir logs supervisord/docker) et on ferme.
-        print(f"[vnc_tls_bridge] {machine.get('id', '?')}: {exc}")
-        client_sock.close()
-        return
-
-    try:
-        _send_all(client_sock, server_init)
-    except OSError:
-        server_sock.close()
-        client_sock.close()
-        return
-
+def _run_relay(client_sock, server_sock):
     t = threading.Thread(target=_relay, args=(client_sock, server_sock), daemon=True)
     t.start()
     _relay(server_sock, client_sock)
     t.join(timeout=5)
 
 
-# --- Service: un listener par machine vnc_tls: true ----------------------
+def _bridge_plain_passthrough(client_sock, raw_sock, raw_version, raw_count, raw_types):
+    """Le serveur propose un type de sécurité "classique" (None ou mot de
+    passe VNC standard, cas le plus courant) — pas besoin de négocier quoi
+    que ce soit nous-mêmes: on rejoue vers noVNC exactement la poignée de
+    main du vrai serveur (même version, même liste de types), on transmet
+    son choix au vrai serveur, puis tout le reste (authentification —
+    y compris la demande interactive de mot de passe dans le navigateur si
+    rien n'est mémorisé, exactement comme sans ce pont —, ClientInit/
+    ServerInit, trafic ordinaire) passe en relais brut, sans plus
+    interpréter le protocole."""
+    _send_all(client_sock, raw_version)
+    _recv_exact(client_sock, 12)  # version du client, ignorée (déjà fixée avec le vrai serveur)
+    _send_all(client_sock, raw_count + raw_types)
+    chosen = _recv_exact(client_sock, 1)
+    _send_all(raw_sock, chosen)
+    raw_sock.settimeout(None)
+    _run_relay(client_sock, raw_sock)
+
+
+def bridge_connection(client_sock, machine, pin_certificate):
+    """Gère une connexion entrante de websockify de bout en bout — comme le
+    ferait un vrai client VNC (vncviewer, AVNC...): sonde ce que le vrai
+    serveur propose et s'adapte, sans configuration préalable à faire sur
+    la machine. Type "classique" (None/mot de passe standard) -> relais
+    transparent (_bridge_plain_passthrough). VeNCrypt (chiffré) -> pont
+    complet (_vencrypt_handshake). Rien d'autre n'est supporté (voir les
+    limites connues en tête de ce fichier)."""
+    try:
+        raw_sock, raw_version, raw_count, raw_types, types = _probe(machine, timeout=8)
+    except OSError as exc:
+        print(f"[vnc_tls_bridge] {machine.get('id', '?')}: connexion à "
+              f"{machine.get('host')}:{machine.get('vnc_port')} impossible: {exc}")
+        client_sock.close()
+        return
+    except VncBridgeError as exc:
+        print(f"[vnc_tls_bridge] {machine.get('id', '?')}: {exc}")
+        client_sock.close()
+        return
+
+    if SEC_TYPE_NONE in types or SEC_TYPE_VNC_AUTH in types:
+        try:
+            _bridge_plain_passthrough(client_sock, raw_sock, raw_version, raw_count, raw_types)
+        except (OSError, VncBridgeError) as exc:
+            print(f"[vnc_tls_bridge] {machine.get('id', '?')}: {exc}")
+            client_sock.close()
+            raw_sock.close()
+        return
+
+    try:
+        if SEC_TYPE_VENCRYPT not in types:
+            raise VncBridgeError(f"Types de sécurité non supportés par ce pont: {types}")
+        stored_password = machine.get("vnc_password")
+        password = credentials.decrypt(stored_password) if stored_password else None
+        username = machine.get("vnc_username")
+        _choose_security_type(raw_sock, SEC_TYPE_VENCRYPT)
+        server_sock, server_init = _vencrypt_handshake(
+            raw_sock, machine, pin_certificate, username, password,
+        )
+        _serve_plain_handshake(client_sock)
+        _send_all(client_sock, server_init)
+    except Exception as exc:  # noqa: BLE001
+        # Pas de manière propre de faire remonter le détail à noVNC à ce
+        # stade (il n'a pas encore reçu de ServerInit) — on log côté
+        # serveur (voir logs supervisord/docker) et on ferme.
+        print(f"[vnc_tls_bridge] {machine.get('id', '?')}: {exc}")
+        client_sock.close()
+        raw_sock.close()
+        return
+
+    _run_relay(client_sock, server_sock)
+
+
+# --- Service: un listener par machine ayant un port VNC configuré --------
+#
+# Toute machine avec un vnc_port passe par ce pont (voir gen_vnc_tokens.py:
+# il route systématiquement vers le port local ci-dessous plutôt que vers
+# la machine cible directement) — bridge_connection sonde le vrai serveur
+# à chaque connexion et s'adapte (relais transparent ou VeNCrypt complet),
+# donc aucune configuration préalable n'est nécessaire par machine.
 
 def _serve_machine(machine, port, pin_certificate):
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -452,7 +547,7 @@ def _serve_machine(machine, port, pin_certificate):
     listener.bind(("127.0.0.1", port))
     listener.listen(8)
     print(f"[vnc_tls_bridge] {machine['id']}: écoute sur 127.0.0.1:{port} -> "
-          f"{machine['host']}:{machine['vnc_port']} (VeNCrypt/TLS)")
+          f"{machine['host']}:{machine['vnc_port']}")
     while True:
         client_sock, _ = listener.accept()
         threading.Thread(
@@ -464,12 +559,8 @@ def main():
     pin_certificate = make_cert_pin_checker()
     threads = []
     for machine in store.load_machines():
-        if not machine.get("vnc_tls"):
-            continue
-        port = machine.get("vnc_tls_local_port")
+        port = machine.get("vnc_bridge_port")
         if not machine.get("vnc_port") or not port:
-            print(f"[vnc_tls_bridge] {machine.get('id')}: vnc_tls activé mais "
-                  "vnc_port/vnc_tls_local_port manquant, ignoré.")
             continue
         t = threading.Thread(
             target=_serve_machine, args=(machine, port, pin_certificate), daemon=True,
@@ -478,7 +569,7 @@ def main():
         threads.append(t)
 
     if not threads:
-        print("[vnc_tls_bridge] Aucune machine avec vnc_tls: true — rien à faire, veille.")
+        print("[vnc_tls_bridge] Aucune machine avec un port VNC configuré — rien à faire, veille.")
 
     while True:
         time.sleep(3600)
