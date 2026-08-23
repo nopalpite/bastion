@@ -23,8 +23,12 @@
     <label for="map_image">{{ "Remplacer le plan" if room and room.map_image else "Plan de la salle" }} (image, optionnel)</label>
     <input type="file" id="map_image" name="map_image" accept=".png,.jpg,.jpeg,.svg">
     <p class="hint-box">
-      Format image simple (PNG/JPG/SVG). Vous pourrez ensuite placer les
-      machines dessus par glisser-déposer depuis la page "plan" de la salle.
+      Format image simple (PNG/JPG/SVG), n'importe quelle résolution ou
+      ratio. Une machine placée sur le plan reste toujours exactement au
+      même endroit visuel, quel que soit l'écran utilisé pour l'afficher
+      ensuite (PC, tablette, smartphone) : l'appli s'adapte automatiquement
+      au ratio réel de l'image. Vous pourrez ensuite placer les machines
+      dessus par glisser-déposer depuis la page "plan" de la salle.
     </p>
   </div>
 

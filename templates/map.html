@@ -20,7 +20,8 @@
 </div>
 {% endif %}
 
-<div id="map-wrap" class="map-wrap" data-room-id="{{ room.id }}">
+<div id="map-wrap" class="map-wrap" data-room-id="{{ room.id }}"
+     style="--map-w: {{ map_ratio_w }}; --map-h: {{ map_ratio_h }};">
   {% if room.map_image %}
   <img id="map-bg" src="{{ url_for('static', filename='uploads/maps/' + room.map_image) }}" alt="Plan de {{ room.name }}">
   {% else %}

@@ -39,3 +39,10 @@ WEBSOCKIFY_PORT = int(os.environ.get("BASTION_WEBSOCKIFY_PORT", "6080"))
 # ce chemin sur le même host:port que la page plutôt que WEBSOCKIFY_PORT
 # directement. Voir la section "Derrière un reverse proxy (TLS)" du README.
 WEBSOCKIFY_PATH = os.environ.get("BASTION_WEBSOCKIFY_PATH", "").strip()
+
+# Port d'écoute de rdp_bridge.py (RDP via guacd) — service séparé de
+# websockify, pas le même sous-protocole WebSocket (voir le docstring de
+# rdp_bridge.py). Même logique de reverse-proxy que WEBSOCKIFY_PATH
+# ci-dessus si RDP_WS_PATH est définie.
+RDP_WS_PORT = int(os.environ.get("BASTION_RDP_WS_PORT", "6081"))
+RDP_WS_PATH = os.environ.get("BASTION_RDP_WS_PATH", "").strip()

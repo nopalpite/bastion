@@ -32,7 +32,7 @@
     </div>
 
     <div class="field">
-      <label for="rdp_port">Port RDP (Windows, info seulement — pas utilisé par l'appli)</label>
+      <label for="rdp_port">Port RDP (Windows uniquement)</label>
       <input type="number" id="rdp_port" name="rdp_port" value="{{ machine.rdp_port if machine else 3389 }}">
     </div>
 
@@ -135,6 +135,42 @@
     comme pour les clés d'hôte SSH) ; s'il change ensuite, la connexion
     est refusée plutôt qu'acceptée silencieusement.
   </p>
+
+  <div class="section-sep">RDP (Windows uniquement)</div>
+  <p class="hint-box">
+    Contrairement au VNC, l'authentification RDP a <strong>toujours</strong>
+    lieu côté serveur (via <code>rdp_bridge.py</code> et guacd) : pas de
+    saisie interactive possible dans le navigateur. Un identifiant et un
+    mot de passe mémorisés ici sont donc requis pour que la connexion RDP
+    fonctionne.
+  </p>
+
+  <div class="form-grid" style="margin-top: 14px;">
+    <div class="field">
+      <label for="rdp_username">Utilisateur RDP</label>
+      <input type="text" id="rdp_username" name="rdp_username" value="{{ machine.rdp_username if machine else '' }}">
+    </div>
+    <div class="field">
+      <label for="rdp_password">Mot de passe RDP</label>
+      <input type="password" id="rdp_password" name="rdp_password" {{ 'disabled' if not credentials_enabled else '' }}>
+    </div>
+    <div class="field">
+      <label for="rdp_domain">Domaine (optionnel)</label>
+      <input type="text" id="rdp_domain" name="rdp_domain" value="{{ machine.rdp_domain if machine else '' }}" placeholder="CORP">
+    </div>
+  </div>
+  {% if not credentials_enabled %}
+  <p class="hint-box">
+    La mémorisation du mot de passe RDP est désactivée: aucune
+    <code>BASTION_CREDENTIALS_KEY</code> n'est configurée côté serveur.
+  </p>
+  {% elif machine and machine.rdp_password %}
+  <p class="hint-box">Un mot de passe RDP est déjà mémorisé pour cet hôte. Laissez vide pour le conserver, remplissez pour le remplacer.</p>
+  <label class="checkbox-line">
+    <input type="checkbox" name="clear_rdp_password">
+    Supprimer le mot de passe RDP mémorisé
+  </label>
+  {% endif %}
 
   {% if not machine %}
   <div class="section-sep">Plan (si une salle est sélectionnée)</div>

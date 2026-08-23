@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}RDP — {{ machine.name }}{% endblock %}
+
+{% block body %}
+<div class="session-header">
+  <span>RDP · <span class="machine-name">{{ machine.name }}</span> ({{ machine.host }})</span>
+  <a class="btn" href="{{ url_for('dashboard') }}">Retour</a>
+</div>
+
+<div id="rdp-status" class="error-msg"></div>
+<div id="rdp-screen"></div>
+
+<!--
+  guacamole-common-js (lib JS officielle du projet Apache Guacamole) est
+  chargée depuis jsdelivr en tant que module ES — pas de build local requis,
+  contrairement à noVNC (voir vnc.html). Elle ne fait que sérialiser les
+  événements souris/clavier et interpréter le flux "protocole Guacamole" en
+  provenance de rdp_bridge.py (lui-même relayé depuis guacd, voir son
+  docstring) ; le décodage RDP proprement dit reste entièrement dans guacd.
+-->
+<script type="module">
+  import Guacamole from "https://cdn.jsdelivr.net/npm/guacamole-common-js@1.5.0/dist/esm/guacamole-common.min.js";
+
+  // Même raisonnement que vnc.html: on part de l'hôte/protocole réellement
+  // utilisés par le navigateur pour accéder à la page, pas d'une valeur
+  // fixée côté serveur.
+  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const rdpWsPath = {{ (rdp_ws_path or "") | tojson }};
+
+  let tunnelUrl;
+  if (rdpWsPath) {
+    // Derrière un reverse proxy (TLS): un chemin sur le même host:port que
+    // la page plutôt que d'exposer un port brut séparé (voir la section
+    // "Derrière un reverse proxy (TLS)" du README).
+    tunnelUrl = `${wsProtocol}//${window.location.host}${rdpWsPath}`;
+  } else {
+    tunnelUrl = `${wsProtocol}//${window.location.hostname}:{{ rdp_ws_port }}`;
+  }
+
+  const statusEl = document.getElementById("rdp-status");
+  const screenEl = document.getElementById("rdp-screen");
+
+  const tunnel = new Guacamole.WebSocketTunnel(tunnelUrl);
+  const client = new Guacamole.Client(tunnel);
+
+  screenEl.appendChild(client.getDisplay().getElement());
+
+  client.onstatechange = (state) => {
+    if (state === Guacamole.Client.State.CONNECTED) {
+      statusEl.textContent = "";
+    } else if (state === Guacamole.Client.State.DISCONNECTED) {
+      statusEl.textContent = "Session RDP fermée.";
+    }
+  };
+
+  client.onerror = (status) => {
+    statusEl.textContent = `Erreur RDP : ${status.message || "raison inconnue"} (code ${status.code}).`;
+  };
+
+  // L'authentification RDP a lieu entièrement côté serveur (rdp_bridge.py
+  // fournit les identifiants mémorisés à guacd) — le seul paramètre côté
+  // navigateur est le token qui identifie la machine cible (voir
+  // _handle_ws dans rdp_bridge.py).
+  client.connect("token={{ machine.id }}");
+
+  window.addEventListener("beforeunload", () => client.disconnect());
+
+  const mouse = new Guacamole.Mouse(client.getDisplay().getElement());
+  mouse.onEach(["mousedown", "mousemove", "mouseup"], (e) => {
+    client.sendMouseState(e.state, true);
+  });
+
+  const keyboard = new Guacamole.Keyboard(document);
+  keyboard.onkeydown = (keysym) => {
+    client.sendKeyEvent(1, keysym);
+    return true;
+  };
+  keyboard.onkeyup = (keysym) => {
+    client.sendKeyEvent(0, keysym);
+  };
+</script>
+{% endblock %}

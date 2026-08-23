@@ -1,16 +1,17 @@
-# Bastion — dashboard + SSH/VNC web
+# Bastion — dashboard + SSH/VNC/RDP web
 
 [![CI](https://github.com/nopalpite/bastion/actions/workflows/ci.yml/badge.svg)](https://github.com/nopalpite/bastion/actions/workflows/ci.yml)
 [![Docker build](https://github.com/nopalpite/bastion/actions/workflows/docker-build.yml/badge.svg)](https://github.com/nopalpite/bastion/actions/workflows/docker-build.yml)
 
 Interface simple pour superviser un parc de machines Windows/Linux et s'y
-connecter en SSH ou VNC directement depuis le navigateur.
+connecter en SSH, VNC ou RDP directement depuis le navigateur.
 
 ## Stack
 
 - **Flask** + **Flask-SocketIO** : app web + canal temps réel (statuts, terminal SSH, SFTP)
 - **Paramiko** : connexion SSH côté serveur, relayée vers un terminal `xterm.js`
 - **noVNC** + **websockify** : accès VNC dans le navigateur
+- **guacd** (composant natif du projet Apache Guacamole, embarque FreeRDP) + **guacamole-common-js** : accès RDP dans le navigateur — voir le pont RDP ci-dessous
 - **YAML** (`machines.yaml`) : inventaire des machines, pas de base de données
 
 Choix volontaire : un seul process Python (l'appli + websockify dans le
@@ -21,11 +22,40 @@ dépendance lourde. Facile à lire, facile à étendre.
 
 - **Dashboard de monitoring** : statut ping (vivant/injoignable) de chaque machine, plus un badge SSH indiquant si le port répond — groupées par salle.
 - **Ajout d'hôtes et de salles depuis l'interface** (`+ Hôte` / `+ Salle`), en plus de l'édition directe de `machines.yaml`. Édition et suppression possibles ensuite.
-- **Plan interactif par salle** (`/map/<salle>`) : importez une image de plan, placez les machines dessus par glisser-déposer (souris et tactile), cliquez sur une machine pour ouvrir un accès rapide SSH/VNC ou déclencher un reboot/shutdown.
+- **Plan interactif par salle** (`/map/<salle>`) : importez une image de plan (n'importe quelle résolution/ratio, voir plus bas), placez les machines dessus par glisser-déposer (souris et tactile), cliquez sur une machine pour ouvrir un accès rapide SSH/VNC/RDP ou déclencher un reboot/shutdown.
 - **Terminal SSH** dans le navigateur, avec navigateur de fichiers SFTP dans une colonne latérale (façon MobaXterm).
 - **VNC** dans le navigateur via noVNC, y compris les serveurs chiffrés (VeNCrypt/TLS, RealVNC...) — voir le pont VNC générique ci-dessous.
+- **RDP** (machines Windows) dans le navigateur via guacd — voir le pont RDP ci-dessous.
 - **Épinglage de la clé d'hôte SSH (TOFU)** : la première connexion à une machine mémorise sa clé publique ; si elle change ensuite, la connexion est bloquée avec une alerte explicite.
-- **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion.
+- **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion. Le RDP, lui, **nécessite toujours** des identifiants mémorisés (voir le pont RDP ci-dessous).
+
+## Plan interactif : alignement position <-> image, quel que soit l'écran
+
+Les positions des machines sur le plan (`machine.position.x`/`.y`) sont
+stockées en **pourcentage** de la taille de l'image, pas en pixels
+absolus — pour qu'une machine placée sur le plan reste au même endroit
+visuel quel que soit l'écran qui l'affiche ensuite (PC, tablette,
+smartphone, n'importe quelle taille de fenêtre), et pas seulement sur
+l'écran où elle a été positionnée.
+
+Pour que ce `%` corresponde toujours au même pixel de l'image, le
+conteneur qui l'affiche (`.map-wrap`) doit avoir **exactement** le même
+ratio largeur/hauteur que l'image — sinon l'image est affichée en
+`object-fit: contain`, qui ajoute des bandes vides dont la taille varie
+selon l'écran, et le repère en `%` dérive par rapport à l'image. N'importe
+quelle résolution/ratio d'image de plan est accepté (PNG/JPG/SVG) : le
+ratio réel est lu côté serveur via Pillow dès que la page se charge (voir
+`app.py:map_view`, `map_image.py`), injecté directement dans le CSS
+(variables `--map-w`/`--map-h`, voir `.map-wrap` dans `style.css`) — pas
+de calcul dynamique attendant le chargement de l'image côté navigateur,
+donc pas de "flash" de mauvais ratio à l'affichage. Exception : le SVG,
+vectoriel, n'a pas de résolution fixe que Pillow puisse lire ; son ratio
+réel est déterminé côté navigateur à la place (filet de sécurité dans
+`static/js/map.js`, qui recalcule `--map-w`/`--map-h` une fois l'image
+chargée — inoffensif pour les autres formats, où il ne fait que
+reconfirmer les mêmes valeurs).
+
+Un plan sans image (fond neutre) utilise un ratio 16/9 par défaut.
 
 ## Pont VNC générique (`vnc_tls_bridge.py`)
 
@@ -105,6 +135,49 @@ vérifier après coup ce que `vnc_tls_bridge.py` a réellement négocié :
 docker exec bastion python3 debug_vnc_security.py <host> <port>
 ```
 
+## Pont RDP (`rdp_bridge.py`, via guacd)
+
+Contrairement au VNC (protocole simple, ré-implémenté directement dans
+`vnc_tls_bridge.py`), le RDP embarque son propre chiffrement, la
+négociation NLA/CredSSP, un pipeline de rendu bitmap complexe et des
+canaux virtuels — une ré-implémentation maison serait un travail d'une
+tout autre ampleur. `rdp_bridge.py` délègue donc tout ce travail à
+**guacd**, le composant natif (C, embarque FreeRDP) du projet Apache
+Guacamole, via l'image Docker officielle `guacamole/guacd` — sans
+utiliser le reste de Guacamole (la webapp `guacamole-client`, en Java/
+Tomcat + base de données, gère ses propres utilisateurs/connexions et
+duplique une bonne partie de ce que cette appli fait déjà).
+
+Architecture :
+```
+navigateur --WebSocket("guacamole")--> rdp_bridge.py --TCP--> guacd --RDP--> machine cible
+            (guacamole-common-js)      (protocole Guacamole)   (FreeRDP)
+```
+
+`rdp_bridge.py` sert **lui-même** les connexions WebSocket du navigateur,
+contrairement au VNC qui passe par `websockify` : `guacamole-common-js`
+ouvre son WebSocket avec le sous-protocole `"guacamole"`, que `websockify`
+ne connaît pas (il négocie ses propres sous-protocoles `binary`/`base64`)
+— la poignée de main WebSocket échouerait côté navigateur avant même
+d'atteindre le pont. `rdp_bridge.py` écoute donc sur son propre port
+(`BASTION_RDP_WS_PORT`, `6081` par défaut) et route chaque connexion vers
+la bonne machine via le paramètre `?token=<id_machine>` de l'URL — pas de
+fichier de tokens séparé comme pour websockify/VNC.
+
+La logique de négociation avec guacd (encodage/décodage du protocole
+Guacamole — texte, éléments préfixés par leur longueur en caractères
+Unicode) vit dans `rdp_protocol.py`, testée indépendamment de la partie
+WebSocket (voir `tests/test_rdp_protocol.py`).
+
+**Authentification toujours côté serveur** : contrairement au VNC non
+chiffré (où noVNC peut demander le mot de passe à la volée dans le
+navigateur), le RDP négocié par guacd exige les identifiants dès
+l'instruction `connect` — `rdp_bridge.py` les fournit lui-même à guacd, à
+partir de `rdp_username`/`rdp_password`/`rdp_domain` mémorisés pour la
+machine (chiffrés, voir `BASTION_CREDENTIALS_KEY`). Sans ces identifiants
+mémorisés, la connexion RDP échoue avec un message explicite plutôt que de
+proposer une saisie interactive.
+
 ## Structure
 
 ```
@@ -113,16 +186,19 @@ bastion/
   config.py             constantes (secrets, ports)
   store.py              lecture/écriture de machines.yaml (salles, machines, positions, identifiants)
   credentials.py         chiffrement/déchiffrement des identifiants SSH mémorisés
+  map_image.py            validation + lecture du ratio des images de plan (voir plus haut)
   monitor.py             thread de fond: ping + test de port SSH
   ssh_ws.py               pont Socket.IO <-> Paramiko pour le terminal
   ssh_client.py            connexion SSH avec épinglage de la clé d'hôte (TOFU)
   sftp_ws.py               navigateur de fichiers (colonne latérale du terminal)
   ssh_actions.py           actions ponctuelles (reboot/shutdown) via SSH
-  gen_vnc_tokens.py        génère le fichier de tokens pour websockify
+  gen_vnc_tokens.py        génère le fichier de tokens pour websockify (VNC uniquement)
   vnc_tls_bridge.py        pont VNC générique (relais transparent, ou VeNCrypt/TLS si besoin)
   debug_vnc_security.py    diagnostic RFB autonome (types de sécurité VNC)
+  rdp_bridge.py            pont RDP: sert le WebSocket "guacamole" et relaie vers guacd
+  rdp_protocol.py          négociation avec guacd (protocole Guacamole, testable sans eventlet)
   machines.yaml           inventaire: salles + machines
-  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc)
+  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc, rdp)
   static/css/            style.css (thème console sombre)
   static/js/              dashboard.js, terminal.js, sftp.js, map.js, actions.js
   static/uploads/maps/    images de plan uploadées
@@ -181,6 +257,20 @@ docker exec bastion supervisorctl status
 Si `websockify` est en `FATAL` ou en boucle de redémarrage, regardez
 `docker logs bastion` pour voir l'erreur exacte.
 
+### guacd (pour l'accès RDP)
+
+`guacd` n'est pas une bibliothèque Python : c'est un démon natif séparé,
+lancé via l'image Docker officielle `guacamole/guacd`. Pour du dev local
+hors Docker (`python app.py` directement), lancez-le à part :
+
+```bash
+docker run --name guacd --network host -d guacamole/guacd:1.5.5
+```
+
+(`rdp_bridge.py` s'y connecte sur `127.0.0.1:4822`, non configurable —
+voir `rdp_protocol.py`.) Avec `docker compose up`, c'est déjà géré : voir
+le service `guacd` dans l'exemple `docker-compose.yml` plus bas.
+
 ## Monitoring
 
 Chaque machine est pingée toutes les 15 secondes (`monitor.py`), via la
@@ -237,6 +327,8 @@ Variables d'environnement utiles :
 | `BASTION_ADMIN_USER` / `BASTION_ADMIN_PASSWORD` | identifiants de connexion à l'interface | `admin` / `admin` |
 | `BASTION_WEBSOCKIFY_PORT` | port où joindre le proxy VNC (l'hôte est déterminé automatiquement par le navigateur) | `6080` |
 | `BASTION_WEBSOCKIFY_PATH` | si définie (ex: `/vnc-ws/`), route le VNC via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
+| `BASTION_RDP_WS_PORT` | port où `rdp_bridge.py` sert ses WebSocket (voir le pont RDP ci-dessus) | `6081` |
+| `BASTION_RDP_WS_PATH` | si définie (ex: `/rdp-ws/`), route le RDP via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
 | `BASTION_CREDENTIALS_KEY` | clé de chiffrement des identifiants SSH mémorisés. Sans elle, la mémorisation est désactivée. Générer avec `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | (aucune) |
 | `BASTION_DATA_DIR` | dossier contenant `machines.yaml`. L'image Docker la définit à `/app/config` (voir la section Docker) ; sans intérêt à changer hors Docker | dossier de l'appli |
 
@@ -257,15 +349,28 @@ si vous voulez mémoriser des identifiants SSH) :
 
 ```yaml
 services:
+  # guacd: composant natif (embarque FreeRDP) qui parle RDP à la place de
+  # rdp_bridge.py — voir la section "Pont RDP" du README. Image officielle
+  # multi-arch, aucune dépendance C à compiler dans l'image bastion.
+  guacd:
+    image: guacamole/guacd:1.5.5
+    container_name: bastion-guacd
+    network_mode: host
+    restart: unless-stopped
+
   bastion:
     image: ghcr.io/nopalpite/bastion:latest   # ou un tag de version, ex: 1.2.0
     container_name: bastion
     # network_mode: host = pas de NAT, le conteneur voit exactement les
     # mêmes interfaces/routes que le host. Recommandé pour un bastion:
     # évite les surprises de routage vers les réseaux cibles, quelle que
-    # soit la topologie (mono ou multi-interfaces/VLAN).
+    # soit la topologie (mono ou multi-interfaces/VLAN). C'est aussi ce qui
+    # permet à rdp_bridge.py de joindre guacd sur 127.0.0.1:4822 sans
+    # réseau Docker dédié.
     network_mode: host
     restart: unless-stopped
+    depends_on:
+      - guacd
     environment:
       - BASTION_SECRET_KEY=change-moi-en-production
       - BASTION_ADMIN_USER=admin
@@ -276,8 +381,12 @@ services:
       # qui fait suivre ce chemin vers 127.0.0.1:6080 — voir la section
       # "Derrière un reverse proxy (TLS)" du README.
       - BASTION_WEBSOCKIFY_PATH=
-      # Sans cette clé, la mémorisation des identifiants SSH est désactivée.
-      # Générer avec: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - BASTION_RDP_WS_PORT=6081
+      # Même principe que BASTION_WEBSOCKIFY_PATH ci-dessus, pour le RDP.
+      - BASTION_RDP_WS_PATH=
+      # Sans cette clé, la mémorisation des identifiants SSH/VNC/RDP est
+      # désactivée. Générer avec:
+      # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - BASTION_CREDENTIALS_KEY=
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
@@ -450,7 +559,7 @@ une première connexion (TOFU) et enregistrera la nouvelle clé.
 ## Derrière un reverse proxy (TLS)
 
 L'appli elle-même ne fait pas de TLS — c'est le rôle d'un reverse proxy
-devant elle (nginx, Caddy, Traefik...). Deux flux à faire suivre :
+devant elle (nginx, Caddy, Traefik...). Trois flux à faire suivre :
 1. **L'appli Flask** (port 5000) : pages + Socket.IO (dashboard,
    terminal SSH, SFTP). Le client Socket.IO (`io()`) s'adapte tout seul
    au protocole de la page (`wss://` si servi en HTTPS), rien à
@@ -458,20 +567,26 @@ devant elle (nginx, Caddy, Traefik...). Deux flux à faire suivre :
 2. **websockify** (port 6080, VNC) : à faire suivre séparément, car ce
    n'est pas un flux Socket.IO mais un WebSocket brut vers un process à
    part.
+3. **rdp_bridge.py** (port 6081, RDP) : même chose que websockify pour le
+   VNC — un WebSocket brut vers un process séparé, mais **pas le même
+   process** (rdp_bridge.py ne passe pas par websockify, voir la section
+   "Pont RDP" ci-dessus).
 
-Deux façons de gérer le point 2 :
+Pour les points 2 et 3, deux façons de faire, au choix indépendamment
+pour chacun :
 
-**Option A — exposer le port 6080 directement** (simple, mais un port de
-plus à ouvrir/sécuriser en plus de 443) : ne rien changer côté config,
-`vnc.html` bascule déjà tout seul en `wss://<host>:6080` dès que la page
-est chargée en HTTPS.
+**Option A — exposer le port directement** (6080 et/ou 6081 ; simple,
+mais un port de plus à ouvrir/sécuriser en plus de 443 par flux) : ne
+rien changer côté config, `vnc.html`/`rdp.html` basculent déjà tout seuls
+en `wss://<host>:<port>` dès que la page est chargée en HTTPS.
 
 **Option B — router via un chemin sur le même port que l'appli**
 (recommandé si vous ne voulez exposer que 443) : définissez
-`BASTION_WEBSOCKIFY_PATH` (ex: `/vnc-ws/`), et faites suivre ce chemin
-vers `127.0.0.1:6080` dans le reverse proxy.
+`BASTION_WEBSOCKIFY_PATH` (ex: `/vnc-ws/`) et/ou `BASTION_RDP_WS_PATH`
+(ex: `/rdp-ws/`), et faites suivre ces chemins vers respectivement
+`127.0.0.1:6080` et `127.0.0.1:6081` dans le reverse proxy.
 
-Exemple nginx (option B) :
+Exemple nginx (option B, VNC + RDP) :
 ```nginx
 server {
     listen 443 ssl;
@@ -493,6 +608,13 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
+
+    location /rdp-ws/ {
+        proxy_pass http://127.0.0.1:6081/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
 }
 ```
 
@@ -500,6 +622,7 @@ Exemple Caddy (option B, plus court) :
 ```
 bastion.example.com {
     reverse_proxy /vnc-ws/* 127.0.0.1:6080
+    reverse_proxy /rdp-ws/* 127.0.0.1:6081
     reverse_proxy 127.0.0.1:5000
 }
 ```
@@ -509,10 +632,15 @@ bastion.example.com {
 - **Authentification** : le login actuel est un simple couple identifiant
   fixe / mot de passe fixe, à remplacer par un vrai annuaire (LDAP/AD,
   SSO, ou au minimum une table utilisateurs avec mots de passe hashés).
-- **Identifiants SSH** : optionnellement mémorisés chiffrés (voir
-  `BASTION_CREDENTIALS_KEY`) ; sans cette clé, saisis à chaque connexion
-  et jamais stockés côté serveur. Le mot de passe VNC n'est jamais
-  mémorisé, saisi à chaque connexion.
+- **Identifiants SSH/VNC** : optionnellement mémorisés chiffrés (voir
+  `BASTION_CREDENTIALS_KEY`) ; sans cette clé (ou sans les mémoriser),
+  saisis à chaque connexion et jamais stockés côté serveur — sauf pour un
+  serveur VNC chiffré (VeNCrypt/TLS), où ils sont nécessairement requis
+  (voir le pont VNC générique).
+- **Identifiants RDP** : contrairement au SSH/VNC, **toujours** mémorisés
+  chiffrés (nécessaire — l'authentification RDP a lieu côté serveur, pas
+  de saisie interactive possible, voir la section "Pont RDP"). Le mot de
+  passe déchiffré ne transite jamais vers le navigateur.
 - **HTTPS/WSS** : mettez un reverse proxy (nginx/Traefik) devant l'app en
   TLS (voir section dédiée).
 - **Traçabilité** : envisager de journaliser les ouvertures de session

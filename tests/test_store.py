@@ -31,6 +31,35 @@ def test_add_machine_windows_default_rdp_port(machines_file):
     assert machine["rdp_port"] == 3389
 
 
+def test_add_windows_machine_stores_encrypted_rdp_credentials(machines_file, credentials_key):
+    machine_id = store.add_machine(
+        name="Win", os_type="windows", host="10.0.0.9",
+        rdp_username="administrateur", rdp_password="hunter2", rdp_domain="CORP",
+    )
+    machine = store.get_machine(machine_id)
+    assert machine["rdp_username"] == "administrateur"
+    assert machine["rdp_domain"] == "CORP"
+    assert machine["rdp_password"] != "hunter2"  # jamais en clair
+
+
+def test_linux_machine_has_no_rdp_port(machines_file):
+    machine_id = store.add_machine(name="Lin", os_type="linux", host="10.0.0.9")
+    machine = store.get_machine(machine_id)
+    assert "rdp_port" not in machine
+
+
+def test_update_machine_switching_from_windows_clears_rdp_fields(machines_file, credentials_key):
+    machine_id = store.add_machine(
+        name="Win", os_type="windows", host="10.0.0.9",
+        rdp_username="admin", rdp_password="hunter2",
+    )
+    store.update_machine(machine_id, name="Win", os_type="linux", host="10.0.0.9")
+    machine = store.get_machine(machine_id)
+    assert "rdp_port" not in machine
+    assert "rdp_username" not in machine
+    assert "rdp_password" not in machine
+
+
 def test_add_machine_in_room_gets_a_position(machines_file):
     room_id = store.add_room("Salle A")
     machine_id = store.add_machine(

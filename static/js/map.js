@@ -4,17 +4,27 @@ let editMode = false;
 // --- Alignement position <-> image ---------------------------------
 //
 // Les positions des machines sont en %, relatives au conteneur
-// #map-wrap. Pour que ce % corresponde toujours au même point visuel
-// sur l'image (quelle que soit la taille/orientation d'écran), le
-// conteneur doit avoir exactement le même ratio largeur/hauteur que
-// l'image — sinon "object-fit: contain" ajoute des bandes vides dont
-// la taille varie selon l'écran, et le repère en % se décale.
+// #map-wrap. Pour que ce % corresponde toujours au même point visuel sur
+// l'image (quelle que soit la taille/orientation d'écran), le conteneur
+// doit avoir exactement le même ratio largeur/hauteur que l'image —
+// sinon "object-fit: contain" ajoute des bandes vides dont la taille
+// varie selon l'écran, et le repère en % se décale.
+//
+// Le serveur injecte déjà ce ratio (variables CSS --map-w/--map-h, voir
+// templates/map.html) pour un affichage correct dès le premier rendu,
+// sans attendre le JS. Ce bloc ne sert donc que de filet de sécurité pour
+// les cas où le serveur n'a pas pu déterminer le ratio réel — le SVG
+// (vectoriel, aucune résolution fixe à lire côté serveur, voir
+// map_image.py) en particulier, mais aussi tout format dont la lecture
+// aurait échoué côté serveur. Pour une image dont le ratio est déjà
+// correctement injecté, ce code se contente de reconfirmer les mêmes
+// valeurs — inoffensif.
 const mapBg = document.getElementById("map-bg");
 if (mapBg) {
   const applyAspectRatio = () => {
     if (mapBg.naturalWidth && mapBg.naturalHeight) {
-      mapWrap.style.aspectRatio = `${mapBg.naturalWidth} / ${mapBg.naturalHeight}`;
-      mapWrap.style.height = "auto";
+      mapWrap.style.setProperty("--map-w", mapBg.naturalWidth);
+      mapWrap.style.setProperty("--map-h", mapBg.naturalHeight);
     }
   };
   if (mapBg.complete) applyAspectRatio();
