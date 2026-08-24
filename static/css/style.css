@@ -85,6 +85,10 @@ a { color: inherit; }
   margin: 0 auto;
   padding: 36px 28px 60px;
 }
+/* La page plan (voir templates/map.html) veut au contraire utiliser
+   toute la largeur de l'écran, pour que l'image de plan reste aussi
+   grande que possible — pas de max-width ici. */
+body.page-map .container { max-width: none; }
 
 .page-title {
   font-family: var(--font-mono);
@@ -606,18 +610,27 @@ form button[type="submit"] { margin-top: 24px; }
      plan, ou format dont la résolution n'est pas lisible côté serveur —
      SVG, voir le filet de sécurité dans static/js/map.js).
 
-     width: min(100%, ...) plutôt que width: 100% + max-height: 75vh
+     width: min(100%, ...) plutôt que width: 100% + max-height: <budget>
      séparément: comme "aspect-ratio" ne peut ajuster qu'UNE seule
      dimension automatique, combiner les deux propriétés produirait un
-     conflit dès que la largeur à 100% donnerait une hauteur > 75vh (cas
-     fréquent sur une fenêtre courte et large, pas seulement mobile) — la
-     largeur resterait alors à 100% sans respecter le ratio, cassant
-     l'alignement des marqueurs avec l'image. Ce calc() donne d'avance la
-     largeur qui, une fois la hauteur dérivée du ratio, ne dépassera
-     jamais 75vh. */
+     conflit dès que la largeur à 100% donnerait une hauteur > le budget
+     disponible (cas fréquent sur une fenêtre courte et large, pas
+     seulement mobile) — la largeur resterait alors à 100% sans respecter
+     le ratio, cassant l'alignement des marqueurs avec l'image. Ce calc()
+     donne d'avance la largeur qui, une fois la hauteur dérivée du ratio,
+     ne dépassera jamais ce budget.
+
+     --map-max-h: hauteur dispo réellement mesurée par JS (voir map.js,
+     updateMaxHeight) — distance entre le haut de .map-wrap et le bas de
+     la fenêtre, pas une fraction fixe de vh: un "75vh" fixe ignore la
+     hauteur réelle de l'en-tête au-dessus (page-header, barre "non
+     placées"...), ce qui sous-utilisait la largeur dispo sur un écran
+     large où l'en-tête ne prend qu'une petite fraction de la hauteur.
+     75vh ci-dessous n'est qu'un repli avant que le JS ait mesuré. */
   --map-w: 16;
   --map-h: 9;
-  width: min(100%, calc(75vh * var(--map-w) / var(--map-h)));
+  --map-max-h: 75vh;
+  width: min(100%, calc(var(--map-max-h) * var(--map-w) / var(--map-h)));
   aspect-ratio: var(--map-w) / var(--map-h);
   margin: 0 auto;
   background: var(--bg-raised);
@@ -652,19 +665,31 @@ form button[type="submit"] { margin-top: 24px; }
 .map-wrap.hide-labels .marker-label { display: none; }
 
 .map-marker {
+  /* Taille fixée à celle du point (14x14), PAS à celle de son contenu
+     (point + éventuellement le nom) : le point ancré par "left/top" +
+     "translate(-50%,-50%)" doit rester exactement sur sa position quoi
+     qu'il arrive — s'il incluait le nom dans son gabarit, masquer/afficher
+     les noms changerait la hauteur de la boîte et donc, via ce -50%, la
+     position du point lui-même (léger saut vertical à chaque bascule,
+     voir static/js/map.js pour le bouton concerné). Le nom est donc posé
+     en position absolue SOUS le point (voir .marker-label ci-dessous),
+     sans influencer ce gabarit. */
   position: absolute;
   z-index: 2;
+  width: 14px;
+  height: 14px;
   transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
   cursor: pointer;
   touch-action: none;
 }
 .map-wrap.edit-mode .map-marker { cursor: grab; }
 .map-marker .status-dot { width: 14px; height: 14px; box-shadow: 0 0 0 4px var(--bg-raised); }
 .marker-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
   font-family: var(--font-mono);
   font-size: 10px;
   background: rgba(13,17,23,0.85);
@@ -673,6 +698,7 @@ form button[type="submit"] { margin-top: 24px; }
   padding: 2px 6px;
   color: var(--text);
   white-space: nowrap;
+  touch-action: none;
 }
 
 /* --- modal --- */

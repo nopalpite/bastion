@@ -31,6 +31,23 @@ if (mapBg) {
   mapBg.addEventListener("load", applyAspectRatio);
 }
 
+// --- Utiliser toute la largeur disponible sur un grand écran ------------
+//
+// .map-wrap limite sa hauteur via --map-max-h (voir style.css) pour ne
+// jamais dépasser la fenêtre verticalement — un "75vh" fixe ignorerait la
+// hauteur réelle de tout ce qui est affiché au-dessus du plan (en-tête,
+// barre "non placées" si elle est présente...), qui varie d'une page à
+// l'autre : sur un écran large avec un en-tête proportionnellement petit,
+// ça sous-utilisait la largeur dispo (le plan restait inutilement étroit).
+// On mesure donc l'espace vertical réellement restant sous le plan.
+function updateMapMaxHeight() {
+  const bottomMargin = 24; // un peu d'air en bas de page
+  const available = window.innerHeight - mapWrap.getBoundingClientRect().top - bottomMargin;
+  mapWrap.style.setProperty("--map-max-h", `${Math.max(280, available)}px`);
+}
+updateMapMaxHeight();
+window.addEventListener("resize", () => requestAnimationFrame(updateMapMaxHeight));
+
 // --- Afficher/masquer les noms des machines -----------------------------
 //
 // Préférence globale (pas par salle) mémorisée en local, façon largeur du

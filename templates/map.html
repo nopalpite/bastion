@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Plan — {{ room.name }}{% endblock %}
 
+{# Le plan doit pouvoir occuper toute la largeur de l'écran, pas le
+   max-width: 1080px de .container (pensé pour du contenu texte, voir
+   style.css) — cette page a besoin du contraire pour un confort visuel
+   sur grand écran. Voir .page-map dans style.css. #}
+{% block body_class %}page-map{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <div class="page-title">Plan — {{ room.name }}</div>
