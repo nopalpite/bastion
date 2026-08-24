@@ -68,6 +68,15 @@
 
   const rfb = new RFB(screenEl, url, { credentials: initialCredentials });
 
+  // Sans ça, un écran distant plus grand que la fenêtre du navigateur ne
+  // serait que partiellement visible (comportement par défaut de noVNC),
+  // sans aucun moyen de se déplacer pour voir le reste : ça adapte
+  // l'affichage à la taille dispo plutôt que de l'afficher à taille
+  // réelle avec débordement. #vnc-screen a une hauteur bornée en CSS
+  // (voir style.css) — nécessaire pour que noVNC sache dans quel espace
+  // rentrer l'image, sinon ce réglage n'aurait aucun effet.
+  rfb.scaleViewport = true;
+
   rfb.addEventListener("credentialsrequired", (e) => {
     const needsUsername = (e.detail.types || []).includes("username");
     document.getElementById("vnc-username-field").style.display = needsUsername ? "block" : "none";
