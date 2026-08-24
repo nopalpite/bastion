@@ -68,7 +68,53 @@ toggleLabelsBtn.addEventListener("click", () => {
   const hidden = !mapWrap.classList.contains("hide-labels");
   applyLabelsVisibility(hidden);
   localStorage.setItem(LABELS_STORAGE_KEY, hidden ? "1" : "0");
+  adjustAllLabelPlacements(); // les noms redevenus visibles doivent être repositionnés
 });
+
+// --- Repositionnement dynamique des noms près des bords -----------------
+//
+// Le nom est affiché sous le point par défaut (voir .marker-label dans
+// style.css) — mais un point tout en bas du plan pousserait son nom hors
+// du cadre (invisible), et un point collé à gauche/droite couperait une
+// partie du nom puisqu'il est centré dessus. On bascule donc le nom
+// au-dessus s'il déborderait en bas, et on l'aligne sur le bord du point
+// le plus proche du bord du plan (au lieu de le centrer) s'il déborderait
+// à gauche ou à droite — .flip-top/.align-left/.align-right ci-dessous.
+//
+// offsetWidth/offsetHeight du nom ne dépendent pas de sa position (juste
+// posé en absolute, out-of-flow) : pas besoin de retirer les classes
+// avant de mesurer, contrairement à s'il fallait mesurer après un flip.
+function adjustLabelPlacement(marker) {
+  const label = marker.querySelector(".marker-label");
+  if (!label) return;
+
+  const wrapRect = mapWrap.getBoundingClientRect();
+  const dotRect = marker.getBoundingClientRect();
+  const margin = 6; // marge de confort avec le bord du plan
+
+  const overflowsBottom = dotRect.bottom + 4 + label.offsetHeight + margin > wrapRect.bottom;
+
+  const dotCenterX = dotRect.left + dotRect.width / 2;
+  const overflowsLeft = dotCenterX - label.offsetWidth / 2 < wrapRect.left + margin;
+  const overflowsRight = dotCenterX + label.offsetWidth / 2 > wrapRect.right - margin;
+
+  label.classList.toggle("flip-top", overflowsBottom);
+  label.classList.toggle("align-left", overflowsLeft && !overflowsRight);
+  label.classList.toggle("align-right", overflowsRight && !overflowsLeft);
+}
+
+function adjustAllLabelPlacements() {
+  document.querySelectorAll(".map-marker").forEach(adjustLabelPlacement);
+}
+
+// Police (IBM Plex Mono, chargée via Google Fonts dans base.html) pas
+// forcément prête au premier calcul: sa largeur réelle une fois chargée
+// diffère de la police de repli, d'où un second passage une fois prête.
+adjustAllLabelPlacements();
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(adjustAllLabelPlacements);
+}
+window.addEventListener("resize", () => requestAnimationFrame(adjustAllLabelPlacements));
 
 // --- Mode édition (déplacer les marqueurs) ------------------------------
 
@@ -108,6 +154,7 @@ function makeDraggable(marker) {
     y = Math.max(0, Math.min(100, y));
     marker.style.left = x + "%";
     marker.style.top = y + "%";
+    adjustLabelPlacement(marker);
   });
 
   function endDrag(e) {

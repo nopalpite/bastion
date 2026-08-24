@@ -700,6 +700,24 @@ form button[type="submit"] { margin-top: 24px; }
   white-space: nowrap;
   touch-action: none;
 }
+/* Repositionnement dynamique près des bords du plan (calculé en JS, voir
+   adjustLabelPlacement dans map.js) — évite qu'un nom déborde du cadre ou
+   soit coupé quand son point est proche d'un bord. */
+.marker-label.flip-top {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+.marker-label.align-left {
+  left: 0;
+  transform: none;
+}
+.marker-label.align-right {
+  left: auto;
+  right: 0;
+  transform: none;
+}
 
 /* --- modal --- */
 
