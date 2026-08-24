@@ -96,3 +96,55 @@ def test_current_machine_for_port_returns_none_after_deletion(machines_file):
 
 def test_current_machine_for_port_returns_none_for_unused_port(machines_file):
     assert bridge._current_machine_for_port(65000) is None
+
+
+# --- probe_available: sonde de disponibilité pour monitor.py -----------
+#
+# Voir son docstring pour le raisonnement complet: doit s'arrêter à la
+# lecture de la poignée de main (comme _probe), ne JAMAIS choisir de type
+# de sécurité ni tenter d'authentification — c'est précisément ce que la
+# doc officielle RealVNC (BlacklistThreshold) documente comme déclenchant
+# son blacklistage anti-bruteforce ("unsuccessful authentication
+# attempts"), pas une simple connexion TCP suivie d'une lecture.
+
+class _FakeSock:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def test_probe_available_returns_true_on_success(monkeypatch):
+    fake_sock = _FakeSock()
+    monkeypatch.setattr(bridge, "_probe",
+                         lambda machine, timeout: (fake_sock, b"", b"", b"", [1, 2]))
+    assert bridge.probe_available({"host": "10.0.0.1", "vnc_port": 5900}) is True
+    assert fake_sock.closed  # ne laisse pas la connexion ouverte derrière lui
+
+
+def test_probe_available_returns_false_on_connection_error(monkeypatch):
+    def raise_oserror(machine, timeout):
+        raise OSError("connection refused")
+    monkeypatch.setattr(bridge, "_probe", raise_oserror)
+    assert bridge.probe_available({"host": "10.0.0.1", "vnc_port": 5900}) is False
+
+
+def test_probe_available_returns_false_on_protocol_error(monkeypatch):
+    def raise_bridge_error(machine, timeout):
+        raise bridge.VncBridgeError("le serveur refuse")
+    monkeypatch.setattr(bridge, "_probe", raise_bridge_error)
+    assert bridge.probe_available({"host": "10.0.0.1", "vnc_port": 5900}) is False
+
+
+def test_probe_available_never_chooses_a_security_type(monkeypatch):
+    # Garde-fou du raisonnement de sécurité ci-dessus, sous forme
+    # d'assertion plutôt que d'un simple commentaire: probe_available ne
+    # doit jamais appeler _choose_security_type (donc jamais s'engager
+    # sur un type, jamais tenter d'authentification).
+    called = []
+    monkeypatch.setattr(bridge, "_choose_security_type", lambda *a: called.append(a))
+    fake_sock = _FakeSock()
+    monkeypatch.setattr(bridge, "_probe", lambda machine, timeout: (fake_sock, b"", b"", b"", [2]))
+    bridge.probe_available({"host": "10.0.0.1", "vnc_port": 5900})
+    assert called == []

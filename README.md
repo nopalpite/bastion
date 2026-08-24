@@ -293,24 +293,39 @@ le service `guacd` dans l'exemple `docker-compose.yml` plus bas.
 Chaque machine est pingée toutes les 15 secondes (`monitor.py`), via la
 commande système `ping` (pas de socket ICMP brut en Python — évite les
 soucis de droits root/`CAP_NET_RAW`). En plus du ping, le port **SSH**
-est testé séparément par ouverture de port TCP, affiché sous forme de
-badge.
+est testé séparément par ouverture de port TCP, et le service **VNC**
+(si configuré) par une sonde RFB minimale (`vnc_tls_bridge.probe_available`)
+— tous deux affichés sous forme de badges.
 
 - 🟢 **up** (pastille) — répond au ping
 - 🔴 **down** (pastille) — ne répond pas
 - badge **SSH** — vert si le port répond, rouge sinon (indépendant du ping)
+- badge **VNC** (si un port VNC est configuré) — vert si le service répond, rouge sinon
 
-**⚠️ VNC et RDP ne sont volontairement PAS sondés en continu.** Une
-version précédente testait aussi ces ports toutes les 15 secondes de la
-même façon (ouverture TCP puis fermeture immédiate, sans authentification).
-En usage réel, ça a déclenché la protection anti-bruteforce de RealVNC
-Server (`TooManySecFail`), qui a blacklisté l'IP du bastion — y compris
-pour de vraies tentatives de connexion légitimes juste après, en boucle
-perpétuelle puisque le monitoring re-déclenchait le blacklist toutes les
-15 secondes avant même qu'il ait pu retomber. Si vous voulez réactiver
-un test de port VNC malgré ce risque documenté, sachez que ça peut
-rendre le VNC totalement inutilisable sur les serveurs avec ce genre de
-protection.
+**⚠️ Historique VNC** : une version précédente de ce monitoring sondait
+ce port toutes les 15 secondes par une simple ouverture/fermeture TCP,
+sans même lire la réponse du serveur. En usage réel, ça avait coïncidé
+avec un déclenchement de la protection anti-bruteforce de RealVNC Server
+(`TooManySecFail`), qui avait blacklisté l'IP du bastion. Le test avait
+alors été retiré entièrement par précaution.
+
+En reconsidérant la question : la doc officielle RealVNC (paramètre
+`BlacklistThreshold`) est explicite — ce compteur ne réagit qu'à des
+**tentatives d'authentification** ratées (*"ignored if Authentication is
+set to None"*), pas à une connexion TCP suivie d'une lecture de la
+poignée de main. Avec le recul, la cause la plus probable de l'incident
+était les nombreuses tentatives de connexion manuelles ratées (mauvais
+mot de passe) faites pendant les tests de l'époque, pas le sondage
+automatique. Le badge VNC est donc de retour, mais via une sonde qui
+s'arrête volontairement à la lecture de la poignée de main RFB (version
++ types de sécurité proposés) — elle ne choisit jamais de type de
+sécurité et ne tente donc jamais d'authentification (voir le docstring
+de `probe_available` dans `vnc_tls_bridge.py`, et le test
+`test_probe_available_never_chooses_a_security_type` qui vérifie cette
+invariante). Reste un point à surveiller en usage réel : si un doute
+réapparaît malgré tout, `CHECK_INTERVAL_SECONDS` dans `monitor.py` est le
+seul réglage à changer, ou retirez l'appel à `probe_available` dans
+`_check_services`.
 
 **Docker** : le ping ICMP a besoin de la capacité `NET_RAW`, qui fait
 partie de l'ensemble de capacités par défaut de Docker — rien à

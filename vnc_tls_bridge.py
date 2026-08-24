@@ -350,6 +350,35 @@ def _probe(machine, timeout):
         raise
 
 
+def probe_available(machine, timeout=2):
+    """Sonde légère de disponibilité, utilisée par monitor.py pour le badge
+    "VNC" du dashboard — retourne juste True/False, sans jamais choisir de
+    type de sécurité ni tenter la moindre authentification (voir _probe:
+    lit seulement la version RFB et la liste des types proposés, puis
+    referme).
+
+    Pourquoi c'est considéré sûr vis-à-vis de la protection anti-bruteforce
+    de RealVNC Server (TooManySecFail) : sa doc officielle (paramètre
+    BlacklistThreshold, help.realvnc.com) est explicite — "Specify a
+    number of unsuccessful AUTHENTICATION attempts [...] ignored if
+    Authentication is set to None" — le compteur ne réagit qu'à des
+    échecs d'authentification, pas à une connexion TCP suivie d'une
+    lecture de la poignée de main initiale. Un incident réel avait été
+    documenté ici (voir monitor.py) après avoir sondé ce port en continu ;
+    avec le recul et cette doc en main, la cause la plus probable est les
+    nombreuses tentatives de connexion échouées faites manuellement
+    pendant les tests de l'époque (identifiants incorrects), pas la sonde
+    TCP elle-même. Reste à confirmer en usage réel : si un doute
+    réapparaît, CHECK_INTERVAL_SECONDS dans monitor.py est le seul réglage
+    à changer (ou retirer l'appel à cette fonction)."""
+    try:
+        raw_sock, _raw_version, _raw_count, _raw_types, _types = _probe(machine, timeout)
+    except (OSError, VncBridgeError):
+        return False
+    raw_sock.close()
+    return True
+
+
 def _vencrypt_handshake(raw_sock, machine, pin_certificate, username, password):
     """Suite de la négociation en supposant que le type de sécurité 19
     (VeNCrypt) vient d'être choisi côté serveur (voir _choose_security_type

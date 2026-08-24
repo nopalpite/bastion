@@ -11,6 +11,7 @@ import subprocess
 import threading
 import time
 
+import vnc_tls_bridge
 from store import load_machines
 
 CHECK_INTERVAL_SECONDS = 15
@@ -62,24 +63,35 @@ def check_port(host, port, timeout=CHECK_TIMEOUT_SECONDS):
 
 
 def _check_services(machine):
-    """Teste le port SSH de la machine et retourne un dict {"ssh": bool}.
+    """Teste les services configurés de la machine (SSH, VNC) et retourne
+    un dict {"ssh": bool, "vnc": bool} (RDP n'est volontairement pas
+    testé, pas de moyen léger équivalent connu — voir README).
 
-    VNC et RDP ne sont VOLONTAIREMENT PAS testés ici, contrairement à une
-    version précédente de ce code. Preuve concrète en usage réel: sonder
-    un port VNC RealVNC toutes les 15 secondes en continu (juste ouvrir
-    puis fermer la connexion TCP, sans même tenter l'authentification)
-    peut déclencher la protection anti-bruteforce de RealVNC
-    ("TooManySecFail"), qui blackliste alors l'IP du bastion — y compris
-    pour de VRAIES tentatives de connexion légitimes juste après. Le
-    monitoring finissait par se bloquer lui-même en boucle. SSH ne
-    présente pas ce risque connu (une simple connexion TCP sans
-    authentification n'est pas traitée comme un échec de sécurité par
-    OpenSSH)."""
+    VNC a un historique ici: une version précédente sondait ce port en
+    continu et ça avait fini par déclencher la protection anti-bruteforce
+    de RealVNC Server ("TooManySecFail"), blacklistant l'IP du bastion —
+    y compris pour de VRAIES tentatives de connexion juste après. D'où le
+    retrait complet à l'époque. Reconfirmé depuis via la doc officielle
+    RealVNC (paramètre BlacklistThreshold, help.realvnc.com): ce compteur
+    ne réagit qu'à des tentatives d'AUTHENTIFICATION ratées ("ignored if
+    Authentication is set to None"), pas à une connexion TCP suivie d'une
+    lecture de la poignée de main — avec le recul, la cause la plus
+    probable de l'incident était les nombreux essais de connexion
+    manuels ratés (mauvais mot de passe) pendant les tests de l'époque,
+    pas le sondage automatique lui-même. vnc_tls_bridge.probe_available()
+    s'arrête donc volontairement avant tout choix de type de sécurité ou
+    tentative d'authentification (voir son docstring pour le détail). À
+    surveiller malgré tout en usage réel: CHECK_INTERVAL_SECONDS est le
+    seul réglage à changer si un doute réapparaît."""
     services = {}
 
     ssh_port = machine.get("ssh_port")
     if ssh_port:
         services["ssh"] = check_port(machine["host"], ssh_port)
+
+    vnc_port = machine.get("vnc_port")
+    if vnc_port:
+        services["vnc"] = vnc_tls_bridge.probe_available(machine, timeout=CHECK_TIMEOUT_SECONDS)
 
     return services
 

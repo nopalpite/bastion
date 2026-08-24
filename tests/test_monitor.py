@@ -55,14 +55,41 @@ def test_ping_host_timeout_is_treated_as_down(monkeypatch):
     assert latency is None
 
 
-def test_check_services_only_probes_ssh(monkeypatch):
-    # VNC/RDP ne doivent volontairement jamais être sondés en continu
-    # (voir le commentaire de _check_services: risque de blacklist
-    # anti-bruteforce côté RealVNC) — seule la clé "ssh" doit apparaître.
+def test_check_services_probes_ssh_and_vnc(monkeypatch):
+    # RDP n'a pas d'équivalent léger connu, volontairement absent (voir le
+    # commentaire de _check_services). VNC, lui, est sondé mais UNIQUEMENT
+    # via vnc_tls_bridge.probe_available — jamais un check_port() générique
+    # dessus, qui serait une simple connexion TCP sans même lire la
+    # poignée de main RFB (voir le docstring de probe_available pour le
+    # raisonnement complet sur ce qui est sûr ou non vis-à-vis du
+    # blacklistage anti-bruteforce de RealVNC).
     monkeypatch.setattr(monitor, "check_port", lambda host, port, timeout=None: True)
+    monkeypatch.setattr(monitor.vnc_tls_bridge, "probe_available",
+                         lambda machine, timeout=None: True)
     machine = {"host": "10.0.0.1", "ssh_port": 22, "vnc_port": 5900, "rdp_port": 3389}
     services = monitor._check_services(machine)
+    assert services == {"ssh": True, "vnc": True}
+
+
+def test_check_services_vnc_down_reported_independently_of_ssh(monkeypatch):
+    monkeypatch.setattr(monitor, "check_port", lambda host, port, timeout=None: True)
+    monkeypatch.setattr(monitor.vnc_tls_bridge, "probe_available",
+                         lambda machine, timeout=None: False)
+    machine = {"host": "10.0.0.1", "ssh_port": 22, "vnc_port": 5900}
+    services = monitor._check_services(machine)
+    assert services == {"ssh": True, "vnc": False}
+
+
+def test_check_services_skips_vnc_without_vnc_port_configured(monkeypatch):
+    probe_calls = []
+    monkeypatch.setattr(monitor, "check_port", lambda host, port, timeout=None: True)
+    monkeypatch.setattr(
+        monitor.vnc_tls_bridge, "probe_available",
+        lambda machine, timeout=None: probe_calls.append(machine) or True,
+    )
+    services = monitor._check_services({"host": "10.0.0.1", "ssh_port": 22})
     assert services == {"ssh": True}
+    assert probe_calls == []  # jamais appelé si pas de vnc_port
 
 
 def test_check_services_without_ssh_port_configured(monkeypatch):

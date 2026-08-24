@@ -52,6 +52,9 @@
       </div>
       <div class="service-badges">
         <span class="svc-badge {{ 'ok' if st and st.services and st.services.get('ssh') else 'ko' }}" data-svc="ssh">SSH</span>
+        {% if m.vnc_port %}
+        <span class="svc-badge {{ 'ok' if st and st.services and st.services.get('vnc') else 'ko' }}" data-svc="vnc">VNC</span>
+        {% endif %}
       </div>
       <div class="actions">
         <a class="btn" href="{{ url_for('terminal', machine_id=m.id) }}">SSH</a>
