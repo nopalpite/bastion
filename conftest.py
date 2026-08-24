@@ -7,6 +7,7 @@ la racine du dépôt à sys.path — nécessaire ici car les modules de l'appli
 import pytest
 from cryptography.fernet import Fernet
 
+import gen_vnc_tokens
 import store
 
 
@@ -19,10 +20,16 @@ def machines_file(tmp_path, monkeypatch):
     fait "from config import MACHINES_FILE", qui copie la valeur au moment
     de l'import — patcher config.MACHINES_FILE après coup n'aurait aucun
     effet sur le nom déjà lié dans le module store.
-    """
+
+    Redirige aussi gen_vnc_tokens.TOKENS_FILE (même raison qu'au-dessus) :
+    add_machine/update_machine/delete_machine régénèrent ce fichier à
+    chaque appel (voir store._regenerate_vnc_tokens) — sans ce patch, les
+    tests écriraient pour de vrai dans vnc_tokens.conf à la racine du
+    projet."""
     path = tmp_path / "machines.yaml"
     path.write_text("rooms: []\nmachines: []\n", encoding="utf-8")
     monkeypatch.setattr(store, "MACHINES_FILE", str(path))
+    monkeypatch.setattr(gen_vnc_tokens, "TOKENS_FILE", str(tmp_path / "vnc_tokens.conf"))
     return path
 
 

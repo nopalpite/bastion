@@ -36,6 +36,31 @@ from config import MACHINES_FILE
 _lock = threading.Lock()
 
 
+def _regenerate_vnc_tokens():
+    """Redéclenche la génération du fichier de tokens websockify (voir
+    gen_vnc_tokens.py) après toute modification de l'inventaire pouvant
+    affecter le VNC — sans ça, une machine VNC ajoutée/modifiée/supprimée
+    via l'interface resterait injoignable (ou routée vers une ancienne
+    adresse) tant que le conteneur n'est pas relancé : ce fichier n'était
+    jusqu'ici régénéré qu'au démarrage (voir docker/entrypoint.sh).
+    websockify, lui, relit ce fichier à chaque connexion sans le mettre en
+    cache (vérifié dans le code de websockify.token_plugins.TokenFile),
+    donc le régénérer suffit — pas besoin de redémarrer websockify.
+
+    Import différé (pas en haut du fichier): gen_vnc_tokens.py importe
+    lui-même load_machines depuis ce module, un import en tête de fichier
+    créerait une dépendance circulaire au chargement du module.
+
+    Échec non bloquant: le fichier machines.yaml (source de vérité) est
+    déjà sauvegardé à ce stade — un souci d'écriture sur ce fichier
+    secondaire ne doit pas faire échouer l'opération qui l'a déclenché."""
+    import gen_vnc_tokens
+    try:
+        gen_vnc_tokens.write_tokens()
+    except OSError as exc:
+        print(f"[store] Échec de la régénération de vnc_tokens.conf: {exc}")
+
+
 def _load():
     with open(MACHINES_FILE, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
@@ -216,7 +241,8 @@ def add_machine(name, os_type, host, ssh_port=22, vnc_port=None, rdp_port=None,
 
         data["machines"].append(entry)
         _save(data)
-        return machine_id
+    _regenerate_vnc_tokens()
+    return machine_id
 
 
 def update_machine_position(machine_id, x, y):
@@ -349,6 +375,7 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
                 if encrypted_password:
                     m["credentials"] = {"username": username, "password": encrypted_password}
         _save(data)
+    _regenerate_vnc_tokens()
 
 
 def delete_machine(machine_id):
@@ -356,6 +383,7 @@ def delete_machine(machine_id):
         data = _load()
         data["machines"] = [m for m in data["machines"] if m["id"] != machine_id]
         _save(data)
+    _regenerate_vnc_tokens()
 
 
 def update_room(room_id, name):

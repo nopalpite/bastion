@@ -1,7 +1,17 @@
 """Tests pour store.py: CRUD machines/salles sur un machines.yaml temporaire
 (fixture machines_file, voir conftest.py) — aucun accès au fichier réel du
 projet."""
+import os
+
+import gen_vnc_tokens
 import store
+
+
+def _tokens_file_content():
+    if not os.path.exists(gen_vnc_tokens.TOKENS_FILE):
+        return ""
+    with open(gen_vnc_tokens.TOKENS_FILE, encoding="utf-8") as f:
+        return f.read()
 
 
 def test_add_and_get_machine(machines_file):
@@ -213,3 +223,48 @@ def test_set_machine_vnc_cert_fingerprint(machines_file):
     machine_id = store.add_machine(name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900)
     store.set_machine_vnc_cert_fingerprint(machine_id, "deadbeef")
     assert store.get_machine(machine_id)["vnc_tls_cert_fingerprint"] == "deadbeef"
+
+
+# --- Régénération automatique de vnc_tokens.conf (voir gen_vnc_tokens.py:
+# websockify relit ce fichier à chaque connexion sans le mettre en cache,
+# donc le régénérer à chaque modification de l'inventaire suffit — pas
+# besoin de redémarrer le conteneur pour qu'une machine VNC ajoutée via
+# l'interface devienne joignable) ------------------------------------
+
+def test_add_machine_with_vnc_regenerates_tokens_file(machines_file):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900,
+    )
+    bridge_port = store.get_machine(machine_id)["vnc_bridge_port"]
+    assert f"{machine_id}: 127.0.0.1:{bridge_port}" in _tokens_file_content()
+
+
+def test_add_machine_without_vnc_still_writes_tokens_file(machines_file):
+    # Le fichier doit être (re)créé même vide, pas planter s'il n'existe
+    # pas encore (premier ajout d'une machine sans VNC après un
+    # "docker compose up" par exemple).
+    store.add_machine(name="Serveur", os_type="linux", host="10.0.0.1")
+    assert os.path.exists(gen_vnc_tokens.TOKENS_FILE)
+    assert _tokens_file_content() == ""
+
+
+def test_delete_machine_regenerates_tokens_file(machines_file):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900,
+    )
+    assert machine_id in _tokens_file_content()
+
+    store.delete_machine(machine_id)
+    assert machine_id not in _tokens_file_content()
+
+
+def test_update_machine_removing_vnc_regenerates_tokens_file(machines_file):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=5900,
+    )
+    assert machine_id in _tokens_file_content()
+
+    store.update_machine(
+        machine_id, name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=None,
+    )
+    assert machine_id not in _tokens_file_content()

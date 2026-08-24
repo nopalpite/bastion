@@ -240,9 +240,16 @@ websockify --token-plugin=websockify.token_plugins.TokenFile --token-source=vnc_
 ```
 
 Ce proxy unique redirige chaque session vers la bonne machine grâce au
-token dans l'URL (`?token=srv-linux-01` par exemple). Relancez
-`gen_vnc_tokens.py` (et relisez le fichier, ou relancez websockify) après
-toute modification de `machines.yaml`.
+token dans l'URL (`?token=srv-linux-01` par exemple). `vnc_tokens.conf`
+est régénéré automatiquement par l'appli à chaque ajout/modification/
+suppression de machine depuis l'interface (voir `store.py`) — websockify
+relit ce fichier à chaque connexion sans le mettre en cache, donc aucun
+redémarrage n'est nécessaire. Seule une modification **directe** de
+`machines.yaml` (en dehors de l'interface) demande de relancer
+`gen_vnc_tokens.py` vous-même :
+```bash
+python gen_vnc_tokens.py > vnc_tokens.conf
+```
 
 **Important** : la page VNC construit l'URL du websocket avec l'hôte que
 le navigateur a réellement utilisé pour charger la page
@@ -420,9 +427,12 @@ destination de ses conteneurs.
 
 `machines.yaml` (dans `./config`, monté en volume) est en lecture-écriture,
 nécessaire puisque l'appli y écrit quand vous ajoutez un hôte/salle depuis
-l'interface : vous pouvez aussi le modifier à la main sans reconstruire
-l'image, il suffit de redémarrer le conteneur (`docker compose restart`)
-pour que websockify régénère ses tokens.
+l'interface : dans ce cas, `vnc_tokens.conf` est régénéré automatiquement
+(voir la section websockify plus haut), pas besoin de redémarrer. Vous
+pouvez aussi modifier `machines.yaml` à la main sans reconstruire l'image
+— dans ce cas uniquement, redémarrez le conteneur (`docker compose
+restart`) pour que `vnc_tokens.conf` soit régénéré à partir de vos
+changements (ça se fait au démarrage, voir `docker/entrypoint.sh`).
 
 **Pourquoi monter `./config` (un dossier) plutôt que `machines.yaml`
 directement (un fichier)** : si le fichier n'existe pas encore côté hôte au
