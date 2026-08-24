@@ -9,6 +9,7 @@
 <div class="page-header">
   <div class="page-title">Inventaire — {{ total_count }} machine{{ 's' if total_count > 1 else '' }}</div>
   <div class="page-actions">
+    <button class="btn" id="toggle-layout">Vue compacte</button>
     <a class="btn" href="{{ url_for('new_room') }}">+ Salle</a>
     <a class="btn primary" href="{{ url_for('new_host') }}">+ Hôte</a>
   </div>
