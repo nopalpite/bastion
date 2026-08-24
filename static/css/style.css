@@ -108,22 +108,39 @@ body.page-map .container { max-width: none; }
 /* Vue liste (bascule via #toggle-layout, voir dashboard.js) : mêmes
    éléments HTML que la vue grille (mêmes data-role/data-svc utilisés par
    le live update SocketIO, voir dashboard.js) — seule la mise en page
-   CSS change, pas de marquage dupliqué. Repliée sous 700px: caser une
-   ligne entière (nom + méta + badges + boutons) sur un écran étroit
-   demanderait soit un défilement horizontal peu confortable, soit de
-   sacrifier des informations — la vue carte reste la plus lisible en
-   dessous de cette largeur, donc la bascule n'a d'effet qu'au-delà. */
+   CSS change, pas de marquage dupliqué.
+
+   Ces règles de base (resserrer les marges/le padding) s'appliquent à
+   TOUTE largeur, y compris mobile — une carte plus compacte reste utile
+   même en une seule colonne. Seule la mise en ligne unique (nom | méta |
+   badges | actions côte à côte) est réservée à partir de 700px : en
+   dessous, caser tout ça sur une ligne demanderait soit un défilement
+   horizontal peu confortable, soit de sacrifier des informations. */
+.machine-grid.list-view {
+  gap: 6px;
+}
+.machine-grid.list-view .machine-card {
+  padding: 10px 14px;
+}
+.machine-grid.list-view .row1 {
+  margin-bottom: 2px;
+}
+.machine-grid.list-view .machine-meta {
+  margin-bottom: 4px;
+}
+.machine-grid.list-view .service-badges {
+  margin-bottom: 6px;
+}
+
 @media (min-width: 700px) {
   .machine-grid.list-view {
     display: flex;
     flex-direction: column;
-    gap: 6px;
   }
   .machine-grid.list-view .machine-card {
     display: flex;
     align-items: center;
     gap: 18px;
-    padding: 9px 16px;
   }
   .machine-grid.list-view .row1 {
     flex: 0 0 200px;

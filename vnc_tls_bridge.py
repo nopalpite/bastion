@@ -540,39 +540,86 @@ def bridge_connection(client_sock, machine, pin_certificate):
 # la machine cible directement) — bridge_connection sonde le vrai serveur
 # à chaque connexion et s'adapte (relais transparent ou VeNCrypt complet),
 # donc aucune configuration préalable n'est nécessaire par machine.
+#
+# Deux pièges à ne pas réintroduire ici :
+#
+# 1. Ne PAS figer les infos de la machine (host, identifiants...) au
+#    moment où le listener démarre — ce process tourne en continu,
+#    potentiellement des jours, pendant que store.py (dans le process
+#    app.py séparé) peut modifier ces infos à tout moment via l'interface.
+#    _current_machine_for_port() relit donc l'inventaire à CHAQUE connexion
+#    plutôt qu'une seule fois, pour refléter les modifications sans
+#    redémarrage — pas seulement les nouvelles machines.
+#
+# 2. Ne PAS n'ouvrir les ports d'écoute qu'au démarrage — une machine VNC
+#    ajoutée depuis l'interface après coup ne serait alors jamais
+#    joignable tant que ce process n'est pas relancé, même si
+#    vnc_tokens.conf est bien régénéré côté websockify (voir
+#    store._regenerate_vnc_tokens) : websockify résoudrait correctement le
+#    token vers 127.0.0.1:<port>, mais rien n'écouterait encore sur ce
+#    port. ensure_listeners(), rappelée périodiquement dans main(), ouvre
+#    donc un nouveau listener dès qu'un vnc_bridge_port apparaît dans
+#    l'inventaire sans qu'on l'ait déjà. Un port abandonné (machine
+#    supprimée) reste ouvert mais inoffensif : plus aucun token n'y mène
+#    (voir point 1 aussi : une connexion sur un port dont la machine a
+#    entre-temps disparu est simplement refusée).
+#
+# Ce sondage périodique (plutôt qu'une notification directe depuis
+# app.py) est nécessaire car app.py et ce pont sont deux process séparés
+# (supervisord) : app.py ne peut pas faire ouvrir un socket à un autre
+# process directement.
 
-def _serve_machine(machine, port, pin_certificate):
+def _current_machine_for_port(port):
+    for machine in store.load_machines():
+        if machine.get("vnc_bridge_port") == port:
+            return machine
+    return None
+
+
+def _serve_port(port, pin_certificate):
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("127.0.0.1", port))
     listener.listen(8)
-    print(f"[vnc_tls_bridge] {machine['id']}: écoute sur 127.0.0.1:{port} -> "
-          f"{machine['host']}:{machine['vnc_port']}")
+    print(f"[vnc_tls_bridge] écoute sur 127.0.0.1:{port}")
     while True:
         client_sock, _ = listener.accept()
+        machine = _current_machine_for_port(port)
+        if machine is None:
+            print(f"[vnc_tls_bridge] Connexion sur le port {port} mais plus aucune machine "
+                  "associée (supprimée ou modifiée depuis) — refusée.")
+            client_sock.close()
+            continue
         threading.Thread(
             target=bridge_connection, args=(client_sock, machine, pin_certificate), daemon=True,
         ).start()
 
 
+POLL_INTERVAL = 5  # secondes entre deux sondages de nouvelles machines
+
+
 def main():
     pin_certificate = make_cert_pin_checker()
-    threads = []
-    for machine in store.load_machines():
-        port = machine.get("vnc_bridge_port")
-        if not machine.get("vnc_port") or not port:
-            continue
-        t = threading.Thread(
-            target=_serve_machine, args=(machine, port, pin_certificate), daemon=True,
-        )
-        t.start()
-        threads.append(t)
+    listening_ports = set()
 
-    if not threads:
-        print("[vnc_tls_bridge] Aucune machine avec un port VNC configuré — rien à faire, veille.")
+    def ensure_listeners():
+        for machine in store.load_machines():
+            port = machine.get("vnc_bridge_port")
+            if not machine.get("vnc_port") or not port or port in listening_ports:
+                continue
+            listening_ports.add(port)
+            threading.Thread(
+                target=_serve_port, args=(port, pin_certificate), daemon=True,
+            ).start()
+
+    ensure_listeners()
+    if not listening_ports:
+        print("[vnc_tls_bridge] Aucune machine avec un port VNC configuré pour l'instant "
+              f"— nouveau sondage toutes les {POLL_INTERVAL}s.")
 
     while True:
-        time.sleep(3600)
+        time.sleep(POLL_INTERVAL)
+        ensure_listeners()
 
 
 if __name__ == "__main__":

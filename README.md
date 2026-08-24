@@ -251,6 +251,16 @@ redémarrage n'est nécessaire. Seule une modification **directe** de
 python gen_vnc_tokens.py > vnc_tokens.conf
 ```
 
+Ça ne suffirait pas à lui seul : `vnc_tls_bridge.py` (le pont réel entre
+websockify et chaque machine, voir plus haut) doit lui aussi savoir
+qu'une machine existe pour ouvrir un port d'écoute local pour elle. Il
+sonde donc l'inventaire toutes les `POLL_INTERVAL` secondes (5 par défaut)
+et ouvre les nouveaux ports au fur et à mesure — une machine ajoutée
+depuis l'interface devient donc joignable en VNC en quelques secondes,
+sans redémarrage. Les infos d'une machine existante (hôte, identifiants…)
+sont elles aussi relues à chaque connexion, pas mises en cache : modifier
+une machine prend effet immédiatement, dès la connexion suivante.
+
 **Important** : la page VNC construit l'URL du websocket avec l'hôte que
 le navigateur a réellement utilisé pour charger la page
 (`window.location.hostname`), pas une valeur fixée côté serveur.
