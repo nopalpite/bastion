@@ -649,6 +649,7 @@ form button[type="submit"] { margin-top: 24px; }
   padding: 40px;
 }
 .map-wrap.edit-mode { outline: 1px dashed var(--accent-dim); cursor: grab; }
+.map-wrap.hide-labels .marker-label { display: none; }
 
 .map-marker {
   position: absolute;

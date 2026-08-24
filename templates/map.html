@@ -7,6 +7,7 @@
   <div class="page-actions">
     <a class="btn" href="{{ url_for('dashboard', room=room.id) }}">Retour à la liste</a>
     <a class="btn" href="{{ url_for('edit_room', room_id=room.id) }}">Éditer la salle</a>
+    <button class="btn" id="toggle-labels">Masquer les noms</button>
     <button class="btn primary" id="toggle-edit">Activer le mode édition</button>
   </div>
 </div>

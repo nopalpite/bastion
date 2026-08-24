@@ -31,6 +31,28 @@ if (mapBg) {
   mapBg.addEventListener("load", applyAspectRatio);
 }
 
+// --- Afficher/masquer les noms des machines -----------------------------
+//
+// Préférence globale (pas par salle) mémorisée en local, façon largeur du
+// panneau SFTP dans terminal.js: pratique sur un plan chargé, pas de raison
+// de la redemander à chaque visite.
+
+const LABELS_STORAGE_KEY = "bastion-map-hide-labels";
+const toggleLabelsBtn = document.getElementById("toggle-labels");
+
+function applyLabelsVisibility(hidden) {
+  mapWrap.classList.toggle("hide-labels", hidden);
+  toggleLabelsBtn.textContent = hidden ? "Afficher les noms" : "Masquer les noms";
+}
+
+applyLabelsVisibility(localStorage.getItem(LABELS_STORAGE_KEY) === "1");
+
+toggleLabelsBtn.addEventListener("click", () => {
+  const hidden = !mapWrap.classList.contains("hide-labels");
+  applyLabelsVisibility(hidden);
+  localStorage.setItem(LABELS_STORAGE_KEY, hidden ? "1" : "0");
+});
+
 // --- Mode édition (déplacer les marqueurs) ------------------------------
 
 document.getElementById("toggle-edit").addEventListener("click", (e) => {
