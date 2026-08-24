@@ -294,11 +294,22 @@ function fbBase64ToBytes(base64) {
 const editorModal = document.getElementById("file-editor-modal");
 const editorFilename = document.getElementById("editor-filename");
 const editorPathEl = document.getElementById("editor-path");
+const editorCursorPosEl = document.getElementById("editor-cursor-pos");
 const editorTextarea = document.getElementById("editor-textarea");
 const editorMessage = document.getElementById("editor-message");
 const editorSaveBtn = document.getElementById("editor-save-btn");
 let editorCurrentPath = null;
 let editorDirty = false;
+
+// Le clic sur "Fermer" prévient déjà d'une perte de modifications non
+// enregistrées (voir fbCloseEditor), mais fermer l'onglet ou recharger la
+// page directement contournerait ça sans rien demander — au tout dernier
+// moment où le navigateur donne la main avant de décharger la page.
+window.addEventListener("beforeunload", (e) => {
+  if (!editorDirty) return;
+  e.preventDefault();
+  e.returnValue = ""; // requis par certains navigateurs (Chrome), le texte affiché n'est plus personnalisable depuis longtemps
+});
 
 CodeMirror.modeURL = "https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/%N/%N.min.js";
 
@@ -318,6 +329,13 @@ editorCM.on("change", (instance, changeObj) => {
   editorDirty = true;
 });
 
+editorCM.on("cursorActivity", (instance) => {
+  const pos = instance.getCursor();
+  const selection = instance.getSelection();
+  const suffix = selection ? ` (${selection.length})` : "";
+  editorCursorPosEl.textContent = `L${pos.line + 1}:C${pos.ch + 1}${suffix}`;
+});
+
 function fbSetEditorMode(name) {
   const info = CodeMirror.findModeByFileName(name);
   if (!info) {
@@ -333,6 +351,7 @@ function fbOpenEditor(path, name) {
   editorDirty = false;
   editorFilename.textContent = name;
   editorPathEl.textContent = path;
+  editorCursorPosEl.textContent = "";
   editorCM.setValue("");
   editorCM.setOption("readOnly", true);
   editorCM.getWrapperElement().classList.add("cm-loading");
@@ -387,13 +406,25 @@ if (window.visualViewport) {
 
 document.getElementById("editor-close-btn").addEventListener("click", fbCloseEditor);
 
-editorSaveBtn.addEventListener("click", () => {
-  if (!editorCurrentPath) return;
+function fbSaveEditor() {
+  if (!editorCurrentPath || editorSaveBtn.disabled) return;
   editorMessage.textContent = "Enregistrement...";
   editorMessage.classList.remove("error");
   editorSaveBtn.disabled = true;
   socket.emit("sftp_write_file", { path: editorCurrentPath, content: editorCM.getValue() });
-});
+}
+
+editorSaveBtn.addEventListener("click", fbSaveEditor);
+
+// Ctrl+S / Cmd+S: le keymap par défaut de CodeMirror mappe déjà cette
+// combinaison sur la commande "save" (voir keyMap.pcDefault/macDefault
+// dans lib/codemirror.js) — mais tant qu'aucune commande "save" n'est
+// définie, CodeMirror ne bloque PAS l'événement clavier (vérifié dans son
+// code: preventDefault n'est appelé que si un handler existe réellement),
+// donc le navigateur ouvrirait sa boîte de dialogue native "Enregistrer
+// la page" à la place. La définir ici couvre les deux à la fois: elle
+// intercepte l'appui ET déclenche notre sauvegarde.
+CodeMirror.commands.save = fbSaveEditor;
 
 // --- Touches spéciales (mobile), éditeur -----------------------------------
 //

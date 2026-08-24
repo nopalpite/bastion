@@ -15,6 +15,14 @@
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/mode/loadmode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/meta.min.js"></script>
+<!-- Rechercher/remplacer (Ctrl+F / Ctrl+H, raccourcis déjà mappés par le
+     keymap par défaut de CodeMirror — voir "save"/"find"/"replace" dans
+     sftp.js). dialog.js fournit la petite barre de saisie utilisée par
+     search.js pour le prompt de recherche. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.css">
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/search.min.js"></script>
 {% endblock %}
 
 {% block body %}
@@ -95,6 +103,7 @@
     <div class="editor-modal-header">
       <span class="modal-title" id="editor-filename">Fichier</span>
       <span id="editor-path" class="editor-path"></span>
+      <span id="editor-cursor-pos" class="editor-cursor-pos"></span>
     </div>
     <div id="editor-mobile-keys" class="mobile-keys">
       <button type="button" data-cmd="dismissKeyboard">Esc</button>

@@ -907,6 +907,14 @@ body.modal-open {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.editor-cursor-pos {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin-left: auto;
+  flex-shrink: 0;
+}
 /* CodeMirror.fromTextArea() (voir sftp.js) remplace le <textarea>
    d'origine par un .CodeMirror qui prend sa place dans .editor-modal-box —
    le <textarea> reste dans le DOM mais caché, ces règles ne s'appliquent
@@ -960,6 +968,21 @@ body.modal-open {
 .cm-s-bastion .cm-positive { color: var(--up); }
 .cm-s-bastion .cm-header { color: var(--accent); font-weight: 600; }
 .cm-s-bastion .cm-quote { color: var(--text-dim); font-style: italic; }
+
+/* Barre de recherche/remplacement (Ctrl+F / Ctrl+H, addon dialog+search de
+   CodeMirror) : le CSS par défaut de l'addon hérite déjà fond/texte du
+   thème (background/color: inherit), seules les bordures restent
+   fixées sur un gris clair par défaut — à aligner sur la palette sombre. */
+.cm-s-bastion .CodeMirror-dialog-top { border-bottom-color: var(--border); }
+.cm-s-bastion .CodeMirror-dialog-bottom { border-top-color: var(--border); }
+.cm-s-bastion .CodeMirror-dialog input {
+  background: var(--bg-raised);
+  border: 1px solid var(--border) !important;
+  border-radius: 3px;
+  padding: 2px 5px;
+  color: var(--text);
+}
+.cm-s-bastion .CodeMirror-dialog input:focus { border-color: var(--accent) !important; outline: none; }
 
 @media (max-width: 720px) {
   /* Plein écran plutôt qu'un modal centré: sur mobile, un modal

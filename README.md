@@ -512,13 +512,30 @@ contenu dans un éditeur en grand modal, avec coloration syntaxique
 (CodeMirror 5, chargé depuis un CDN comme `xterm.js` — voir
 `templates/terminal.html`). Le langage est détecté depuis l'extension du
 fichier ; sans correspondance reconnue, le fichier reste affiché en texte
-brut, sans erreur. `Enregistrer` réécrit le fichier sur la machine cible
-via SFTP.
+brut, sans erreur. `Enregistrer` (ou **Ctrl+S** / **Cmd+S**) réécrit le
+fichier sur la machine cible via SFTP.
+
+Quelques raccourcis/repères en plus du strict minimum :
+- **Ctrl+F** (rechercher) / **Ctrl+H** (remplacer) — addon `search` de
+  CodeMirror, stylé pour rester lisible sur le thème sombre du site.
+- Position du curseur affichée dans l'en-tête (`L12:C4`), avec le nombre
+  de caractères sélectionnés le cas échéant.
+- Fermer l'onglet ou recharger la page avec des modifications non
+  enregistrées déclenche l'avertissement natif du navigateur (déjà le
+  cas pour le bouton "Fermer" de la modale, mais pas pour ces deux
+  chemins de sortie avant cet ajout).
 
 Limité aux fichiers texte **UTF-8** de moins de **5 Mo** (`MAX_EDIT_BYTES`
 dans `sftp_ws.py`) : un fichier binaire ou trop volumineux affiche un
 message clair plutôt que du charabia dans l'éditeur — téléchargez-le
 dans ce cas plutôt que de l'éditer ici.
+
+**Limite volontaire** : pas d'ouverture dans un éditeur de texte natif de
+votre PC (façon MobaXterm) — un navigateur ne peut pas lancer un
+programme local pour des raisons de sécurité de la plateforme, c'est une
+limite du web, pas de cet éditeur en particulier. Téléchargez le fichier
+puis re-uploadez-le après modification si vous avez besoin de votre
+éditeur habituel.
 
 ### Suivi du répertoire courant (bouton "Suivre")
 
