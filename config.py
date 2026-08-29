@@ -30,19 +30,26 @@ ADMIN_PASSWORD = os.environ.get("BASTION_ADMIN_PASSWORD", "admin")
 # configurable ici: le navigateur utilise directement l'hôte avec lequel
 # il a accédé à la page (window.location côté client), voir
 # templates/vnc.html.
-WEBSOCKIFY_PORT = int(os.environ.get("BASTION_WEBSOCKIFY_PORT", "6080"))
+#
+# Nommées VNC_WS_* (comme RDP_WS_* ci-dessous) plutôt que WEBSOCKIFY_* :
+# le nom de l'outil qui sert le VNC (websockify) est un détail
+# d'implémentation, pas quelque chose que l'utilisateur de cette variable
+# a besoin de connaître — seul le protocole (VNC) compte pour savoir
+# laquelle configurer. Les anciens noms BASTION_WEBSOCKIFY_PORT/_PATH ne
+# sont plus lus : mettez à jour votre configuration si vous les utilisiez.
+VNC_WS_PORT = int(os.environ.get("BASTION_VNC_WS_PORT", "6080"))
 
 # Optionnel: si vous êtes derrière un reverse proxy (TLS/certificat) et
 # ne voulez exposer que son port (443) plutôt qu'un port brut supplémentaire
 # pour websockify, définissez un chemin ici (ex: "/vnc-ws/") que votre
 # reverse proxy fait suivre vers 127.0.0.1:6080. Le client utilisera alors
-# ce chemin sur le même host:port que la page plutôt que WEBSOCKIFY_PORT
+# ce chemin sur le même host:port que la page plutôt que VNC_WS_PORT
 # directement. Voir la section "Derrière un reverse proxy (TLS)" du README.
-WEBSOCKIFY_PATH = os.environ.get("BASTION_WEBSOCKIFY_PATH", "").strip()
+VNC_WS_PATH = os.environ.get("BASTION_VNC_WS_PATH", "").strip()
 
 # Port d'écoute de rdp_bridge.py (RDP via guacd) — service séparé de
 # websockify, pas le même sous-protocole WebSocket (voir le docstring de
-# rdp_bridge.py). Même logique de reverse-proxy que WEBSOCKIFY_PATH
+# rdp_bridge.py). Même logique de reverse-proxy que VNC_WS_PATH
 # ci-dessus si RDP_WS_PATH est définie.
 RDP_WS_PORT = int(os.environ.get("BASTION_RDP_WS_PORT", "6081"))
 RDP_WS_PATH = os.environ.get("BASTION_RDP_WS_PATH", "").strip()

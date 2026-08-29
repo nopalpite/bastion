@@ -357,8 +357,8 @@ Variables d'environnement utiles :
 |---|---|---|
 | `BASTION_SECRET_KEY` | clé de session Flask | à changer en prod |
 | `BASTION_ADMIN_USER` / `BASTION_ADMIN_PASSWORD` | identifiants de connexion à l'interface | `admin` / `admin` |
-| `BASTION_WEBSOCKIFY_PORT` | port où joindre le proxy VNC (l'hôte est déterminé automatiquement par le navigateur) | `6080` |
-| `BASTION_WEBSOCKIFY_PATH` | si définie (ex: `/vnc-ws/`), route le VNC via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
+| `BASTION_VNC_WS_PORT` | port où joindre le proxy VNC (l'hôte est déterminé automatiquement par le navigateur) | `6080` |
+| `BASTION_VNC_WS_PATH` | si définie (ex: `/vnc-ws/`), route le VNC via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
 | `BASTION_RDP_WS_PORT` | port où `rdp_bridge.py` sert ses WebSocket (voir le pont RDP ci-dessus) | `6081` |
 | `BASTION_RDP_WS_PATH` | si définie (ex: `/rdp-ws/`), route le RDP via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
 | `BASTION_CREDENTIALS_KEY` | clé de chiffrement des identifiants SSH mémorisés. Sans elle, la mémorisation est désactivée. Générer avec `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | (aucune) |
@@ -407,14 +407,14 @@ services:
       - BASTION_SECRET_KEY=change-moi-en-production
       - BASTION_ADMIN_USER=admin
       - BASTION_ADMIN_PASSWORD=change-moi
-      - BASTION_WEBSOCKIFY_PORT=6080
+      - BASTION_VNC_WS_PORT=6080
       # Vide par défaut (connexion VNC directe sur le port ci-dessus).
       # À définir (ex: /vnc-ws/) si vous passez par un reverse proxy TLS
       # qui fait suivre ce chemin vers 127.0.0.1:6080 — voir la section
       # "Derrière un reverse proxy (TLS)" du README.
-      - BASTION_WEBSOCKIFY_PATH=
+      - BASTION_VNC_WS_PATH=
       - BASTION_RDP_WS_PORT=6081
-      # Même principe que BASTION_WEBSOCKIFY_PATH ci-dessus, pour le RDP.
+      # Même principe que BASTION_VNC_WS_PATH ci-dessus, pour le RDP.
       - BASTION_RDP_WS_PATH=
       # Sans cette clé, la mémorisation des identifiants SSH/VNC/RDP est
       # désactivée. Générer avec:
@@ -644,7 +644,7 @@ cas : passez par l'option B.
 
 **Option B — router via un chemin sur le même port que l'appli**
 (la seule qui fonctionne une fois l'appli en HTTPS) : définissez
-`BASTION_WEBSOCKIFY_PATH` (ex: `/vnc-ws/`) et/ou `BASTION_RDP_WS_PATH`
+`BASTION_VNC_WS_PATH` (ex: `/vnc-ws/`) et/ou `BASTION_RDP_WS_PATH`
 (ex: `/rdp-ws/`), et faites suivre ces chemins vers respectivement
 `127.0.0.1:6080` et `127.0.0.1:6081` dans le reverse proxy — c'est lui
 qui termine le TLS pour ces flux aussi, exactement comme pour l'appli

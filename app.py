@@ -156,8 +156,8 @@ def vnc(machine_id):
     return render_template(
         "vnc.html",
         machine=machine,
-        websockify_port=config.WEBSOCKIFY_PORT,
-        websockify_path=config.WEBSOCKIFY_PATH,
+        vnc_ws_port=config.VNC_WS_PORT,
+        vnc_ws_path=config.VNC_WS_PATH,
         vnc_username=machine.get("vnc_username") or "",
         vnc_password=vnc_password or "",
     )

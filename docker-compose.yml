@@ -28,14 +28,14 @@ services:
       - BASTION_SECRET_KEY=change-moi-en-production
       - BASTION_ADMIN_USER=admin
       - BASTION_ADMIN_PASSWORD=change-moi
-      - BASTION_WEBSOCKIFY_PORT=6080
+      - BASTION_VNC_WS_PORT=6080
       # Vide par défaut (connexion VNC directe sur le port ci-dessus).
       # À définir (ex: /vnc-ws/) si vous passez par un reverse proxy TLS
       # qui fait suivre ce chemin vers 127.0.0.1:6080 — voir la section
       # "Derrière un reverse proxy (TLS)" du README.
-      - BASTION_WEBSOCKIFY_PATH=
+      - BASTION_VNC_WS_PATH=
       - BASTION_RDP_WS_PORT=6081
-      # Même principe que BASTION_WEBSOCKIFY_PATH ci-dessus, pour le RDP.
+      # Même principe que BASTION_VNC_WS_PATH ci-dessus, pour le RDP.
       - BASTION_RDP_WS_PATH=
       # Sans cette clé, la mémorisation des identifiants SSH/VNC/RDP est
       # désactivée. Générer avec:

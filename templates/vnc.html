@@ -38,18 +38,18 @@
   // Le protocole suit celui de la page (wss:// si la page est en https://,
   // sinon le navigateur bloque la connexion en contenu mixte).
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const websockifyPath = {{ (websockify_path or "") | tojson }};
+  const vncWsPath = {{ (vnc_ws_path or "") | tojson }};
 
   let url;
-  if (websockifyPath) {
+  if (vncWsPath) {
     // Derrière un reverse proxy (TLS): on passe par un chemin sur le
     // même host:port que la page, que le reverse proxy fait suivre vers
     // websockify — pas besoin d'exposer son port brut séparément.
-    url = `${wsProtocol}//${window.location.host}${websockifyPath}?token={{ machine.id }}`;
+    url = `${wsProtocol}//${window.location.host}${vncWsPath}?token={{ machine.id }}`;
   } else {
     // Mode direct (par défaut, pratique en LAN/dev): connexion directe
     // sur le port de websockify.
-    url = `${wsProtocol}//${window.location.hostname}:{{ websockify_port }}/?token={{ machine.id }}`;
+    url = `${wsProtocol}//${window.location.hostname}:{{ vnc_ws_port }}/?token={{ machine.id }}`;
   }
 
   const screenEl = document.getElementById("vnc-screen");
