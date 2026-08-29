@@ -40,10 +40,38 @@
   const statusEl = document.getElementById("rdp-status");
   const screenEl = document.getElementById("rdp-screen");
 
-  const tunnel = new Guacamole.WebSocketTunnel(tunnelUrl);
-  const client = new Guacamole.Client(tunnel);
-
-  screenEl.appendChild(client.getDisplay().getElement());
+  // Traduit un Guacamole.Status.Code en message lisible: Status.message
+  // n'est PAS déduit automatiquement du code (vérifié dans le code source
+  // de guacamole-common-js — le champ reste vide tant qu'on ne le fournit
+  // pas soi-même), la doc du projet le dit d'ailleurs explicitement:
+  // "For user feedback, it is better to translate the Guacamole status
+  // code into a message." Codes les plus probables ici en premier
+  // (échec de connexion au pont/websocket, pas encore guacd/RDP).
+  function describeGuacamoleStatus(status) {
+    const byCode = {
+      [Guacamole.Status.Code.UPSTREAM_NOT_FOUND]:
+        "Impossible de joindre le pont RDP (rdp_bridge.py). Vérifiez qu'il tourne, et que le port/chemin WebSocket configuré est bien atteignable depuis votre navigateur (voir la section RDP du README, notamment si le site est servi en HTTPS via un reverse proxy).",
+      [Guacamole.Status.Code.UPSTREAM_UNAVAILABLE]:
+        "Le pont RDP est joignable mais indisponible (peut-être en cours de redémarrage).",
+      [Guacamole.Status.Code.UPSTREAM_ERROR]:
+        "guacd a rencontré une erreur en essayant de se connecter à la machine cible.",
+      [Guacamole.Status.Code.UPSTREAM_TIMEOUT]:
+        "La machine cible ne répond pas (délai dépassé).",
+      [Guacamole.Status.Code.SESSION_CONFLICT]:
+        "La session a été fermée par une autre connexion concurrente.",
+      [Guacamole.Status.Code.SESSION_TIMEOUT]:
+        "La session a expiré pour inactivité.",
+      [Guacamole.Status.Code.SESSION_CLOSED]:
+        "La session a été fermée côté serveur.",
+      [Guacamole.Status.Code.CLIENT_UNAUTHORIZED]:
+        "Connexion refusée (identifiants RDP manquants ou non mémorisés pour cette machine — voir la section RDP du README).",
+      [Guacamole.Status.Code.CLIENT_FORBIDDEN]:
+        "Connexion refusée par le serveur.",
+    };
+    const known = byCode[status.code];
+    const detail = status.message ? ` (${status.message})` : "";
+    return (known || `Erreur inattendue (code ${status.code})`) + detail;
+  }
 
   client.onstatechange = (state) => {
     if (state === Guacamole.Client.State.CONNECTED) {
@@ -54,7 +82,23 @@
   };
 
   client.onerror = (status) => {
-    statusEl.textContent = `Erreur RDP : ${status.message || "raison inconnue"} (code ${status.code}).`;
+    statusEl.textContent = `Erreur RDP : ${describeGuacamoleStatus(status)}`;
+  };
+
+  // Guacamole.Client NE relaie PAS automatiquement les évènements du
+  // tunnel WebSocket sous-jacent vers ses propres onerror/onstatechange
+  // (vérifié dans le code source: son constructeur ne branche rien sur
+  // tunnel.onerror/onstatechange) — sans ce qui suit, un échec de
+  // connexion WebSocket pur et simple (mauvaise adresse, TLS non
+  // supporté côté pont, pont arrêté...) ne produit ABSOLUMENT AUCUN
+  // retour dans la page, avant même d'atteindre guacd.
+  tunnel.onstatechange = (state) => {
+    if (state === Guacamole.Tunnel.State.CONNECTING) {
+      statusEl.textContent = "Connexion en cours...";
+    }
+  };
+  tunnel.onerror = (status) => {
+    statusEl.textContent = `Erreur de connexion : ${describeGuacamoleStatus(status)}`;
   };
 
   // L'authentification RDP a lieu entièrement côté serveur (rdp_bridge.py

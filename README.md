@@ -625,18 +625,30 @@ devant elle (nginx, Caddy, Traefik...). Trois flux à faire suivre :
    "Pont RDP" ci-dessus).
 
 Pour les points 2 et 3, deux façons de faire, au choix indépendamment
-pour chacun :
+pour chacun — mais une seule fonctionne réellement une fois l'appli
+servie en HTTPS (le sujet même de cette section) :
 
-**Option A — exposer le port directement** (6080 et/ou 6081 ; simple,
-mais un port de plus à ouvrir/sécuriser en plus de 443 par flux) : ne
-rien changer côté config, `vnc.html`/`rdp.html` basculent déjà tout seuls
-en `wss://<host>:<port>` dès que la page est chargée en HTTPS.
+**Option A — exposer le port directement** (6080 et/ou 6081) : **ne
+fonctionne PAS si l'appli est servie en HTTPS.** `vnc.html`/`rdp.html`
+basculent bien automatiquement en `wss://<host>:<port>` dès que la page
+est chargée en HTTPS (le navigateur l'exige — contenu mixte sinon
+bloqué), mais **ni `websockify` ni `rdp_bridge.py` ne savent parler TLS
+eux-mêmes** (aucun `--cert`/`--key` configuré pour l'un, aucun support
+TLS écrit pour l'autre) : la connexion `wss://` échoue alors avant même
+d'atteindre le pont, sans quasiment aucune information exploitable côté
+navigateur (`Firefox ne peut établir de connexion avec le serveur`,
+`Connection closed` côté noVNC...). Cette option n'a donc de sens que si
+l'appli elle-même reste en HTTP (accès direct sur un LAN, sans reverse
+proxy TLS devant) — dans le contexte de cette section, ce n'est pas le
+cas : passez par l'option B.
 
 **Option B — router via un chemin sur le même port que l'appli**
-(recommandé si vous ne voulez exposer que 443) : définissez
+(la seule qui fonctionne une fois l'appli en HTTPS) : définissez
 `BASTION_WEBSOCKIFY_PATH` (ex: `/vnc-ws/`) et/ou `BASTION_RDP_WS_PATH`
 (ex: `/rdp-ws/`), et faites suivre ces chemins vers respectivement
-`127.0.0.1:6080` et `127.0.0.1:6081` dans le reverse proxy.
+`127.0.0.1:6080` et `127.0.0.1:6081` dans le reverse proxy — c'est lui
+qui termine le TLS pour ces flux aussi, exactement comme pour l'appli
+Flask au point 1.
 
 Exemple nginx (option B, VNC + RDP) :
 ```nginx
