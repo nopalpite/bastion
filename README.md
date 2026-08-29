@@ -281,7 +281,7 @@ lancé via l'image Docker officielle `guacamole/guacd`. Pour du dev local
 hors Docker (`python app.py` directement), lancez-le à part :
 
 ```bash
-docker run --name guacd --network host -d guacamole/guacd:1.5.5
+docker run --name guacd --network host -d guacamole/guacd:1.6.0
 ```
 
 (`rdp_bridge.py` s'y connecte sur `127.0.0.1:4822`, non configurable —
@@ -385,7 +385,7 @@ services:
   # rdp_bridge.py — voir la section "Pont RDP" du README. Image officielle
   # multi-arch, aucune dépendance C à compiler dans l'image bastion.
   guacd:
-    image: guacamole/guacd:1.5.5
+    image: guacamole/guacd:1.6.0
     container_name: bastion-guacd
     network_mode: host
     restart: unless-stopped
@@ -490,6 +490,13 @@ Sur Raspberry Pi, si la compilation Python est malgré tout nécessaire :
   `docker buildx build --platform linux/arm64 -t bastion .`, puis
   transférer l'image sur le Pi (`docker save`/`docker load`, ou via un
   registre).
+
+**`guacd` (pour le RDP) a aussi besoin d'ARM64** : les images officielles
+`guacamole/guacd` n'ont un tag arm64 qu'à partir de la **1.6.0** — plus
+ancien, seul l'amd64 était publié. C'est le tag utilisé par défaut dans
+`docker-compose.yml` ; ne redescendez pas en dessous sur une architecture
+ARM sous peine d'un échec de pull silencieusement retenté sur le mauvais
+layer, ou d'un `exec format error` au démarrage du conteneur.
 
 ## Navigateur de fichiers SFTP
 

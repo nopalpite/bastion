@@ -40,6 +40,11 @@
   const statusEl = document.getElementById("rdp-status");
   const screenEl = document.getElementById("rdp-screen");
 
+  const tunnel = new Guacamole.WebSocketTunnel(tunnelUrl);
+  const client = new Guacamole.Client(tunnel);
+
+  screenEl.appendChild(client.getDisplay().getElement());
+
   // Traduit un Guacamole.Status.Code en message lisible: Status.message
   // n'est PAS déduit automatiquement du code (vérifié dans le code source
   // de guacamole-common-js — le champ reste vide tant qu'on ne le fournit
