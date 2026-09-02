@@ -179,7 +179,18 @@ def rdp_params_for_machine(machine):
         "hostname": machine["host"],
         "port": machine.get("rdp_port", 3389),
         "ignore-cert": "true",  # cert auto-signé typique sur un LAN interne
-        "security": "any",  # laisse le serveur choisir (NLA si dispo, sinon repli)
+        # "any" (négociation automatique) semble raisonnable en théorie,
+        # mais c'est un problème connu et documenté de FreeRDP/guacd: face
+        # à un serveur qui IMPOSE NLA (le cas par défaut sur les Windows
+        # modernes, exactement comme le fait mstsc), "any" échoue souvent
+        # avec "Server refused connection (wrong security type?)" côté
+        # guacd plutôt que de retomber correctement sur NLA — confirmé en
+        # conditions réelles (voir tests/test_rdp_protocol.py). "nla" en
+        # dur ici couvre le cas de très loin le plus courant ; si jamais
+        # une machine plus ancienne sans NLA doit être supportée, il
+        # faudra rendre ce champ configurable par machine plutôt que de
+        # repasser à "any".
+        "security": "nla",
     }
     if machine.get("rdp_username"):
         params["username"] = machine["rdp_username"]

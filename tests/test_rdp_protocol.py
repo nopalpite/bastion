@@ -108,6 +108,13 @@ def test_rdp_params_for_machine(credentials_key):
     assert params["username"] == "admin"
     assert params["password"] == "s3cret"
     assert params["ignore-cert"] == "true"
+    # "any" (négociation automatique) échoue en pratique contre un
+    # serveur qui impose NLA -- "Server refused connection (wrong
+    # security type?)" côté guacd, confirmé en conditions réelles contre
+    # un vrai serveur Windows où mstsc (qui force NLA) se connectait très
+    # bien. "nla" explicite est le cas de très loin le plus courant
+    # (Windows moderne, NLA activé par défaut).
+    assert params["security"] == "nla"
 
 
 def test_rdp_params_for_machine_defaults_port(credentials_key):
