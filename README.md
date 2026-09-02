@@ -178,6 +178,20 @@ machine (chiffrés, voir `BASTION_CREDENTIALS_KEY`). Sans ces identifiants
 mémorisés, la connexion RDP échoue avec un message explicite plutôt que de
 proposer une saisie interactive.
 
+**Type de sécurité RDP (`rdp_security`, configurable par machine)** :
+guacd/FreeRDP négocie un chiffrement/authentification RDP distinct du
+protocole Guacamole lui-même — `nla` (Network Level Authentication /
+CredSSP) par défaut, le choix des Windows modernes et de `mstsc`. Il n'y
+a pas de valeur universelle : certains serveurs refusent explicitement
+NLA malgré tout (`Server refused connection (wrong security type?)` côté
+guacd), et la négociation automatique (`any`) a un bug connu et documenté
+côté FreeRDP/guacd qui la fait parfois échouer plutôt que de retomber
+correctement sur ce que le serveur accepte réellement. Si la connexion
+échoue avec ce message malgré des identifiants corrects, changez ce
+réglage (formulaire d'édition de l'hôte) avant de suspecter autre chose —
+essayez `tls` si `nla` est refusé, ou l'inverse. Valeurs acceptées : voir
+`RDP_SECURITY_MODES` dans `rdp_protocol.py`.
+
 ## Structure
 
 ```

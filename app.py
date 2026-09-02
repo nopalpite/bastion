@@ -205,6 +205,7 @@ def new_host():
         rdp_username = request.form.get("rdp_username") or None
         rdp_password = request.form.get("rdp_password") or None
         rdp_domain = request.form.get("rdp_domain") or None
+        rdp_security = request.form.get("rdp_security") or None
 
         if not name or not host or os_type not in ("linux", "windows"):
             return render_template(
@@ -224,6 +225,7 @@ def new_host():
             rdp_username=rdp_username,
             rdp_password=rdp_password,
             rdp_domain=rdp_domain,
+            rdp_security=rdp_security,
         )
         return redirect(url_for("dashboard"))
 
@@ -293,6 +295,7 @@ def edit_host(machine_id):
         rdp_password = request.form.get("rdp_password") or None
         rdp_domain = request.form.get("rdp_domain") or None
         clear_rdp_password = request.form.get("clear_rdp_password") == "on"
+        rdp_security = request.form.get("rdp_security") or None
 
         if not name or not host or os_type not in ("linux", "windows"):
             return render_template(
@@ -315,6 +318,7 @@ def edit_host(machine_id):
             rdp_password=rdp_password,
             rdp_domain=rdp_domain,
             clear_rdp_password=clear_rdp_password,
+            rdp_security=rdp_security,
         )
         return redirect(url_for("dashboard"))
 

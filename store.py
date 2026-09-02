@@ -32,6 +32,7 @@ import yaml
 
 import credentials
 from config import MACHINES_FILE
+from rdp_protocol import DEFAULT_RDP_SECURITY
 
 _lock = threading.Lock()
 
@@ -199,7 +200,8 @@ def _next_vnc_bridge_port(data):
 def add_machine(name, os_type, host, ssh_port=22, vnc_port=None, rdp_port=None,
                  room_id=None, username=None, password=None,
                  vnc_username=None, vnc_password=None,
-                 rdp_username=None, rdp_password=None, rdp_domain=None):
+                 rdp_username=None, rdp_password=None, rdp_domain=None,
+                 rdp_security=None):
     with _lock:
         data = _load()
         existing = {m["id"] for m in data["machines"]}
@@ -222,6 +224,7 @@ def add_machine(name, os_type, host, ssh_port=22, vnc_port=None, rdp_port=None,
             entry["vnc_bridge_port"] = _next_vnc_bridge_port(data)
         if os_type == "windows":
             entry["rdp_port"] = int(rdp_port) if rdp_port else 3389
+            entry["rdp_security"] = rdp_security or DEFAULT_RDP_SECURITY
             if rdp_username:
                 entry["rdp_username"] = rdp_username
             if rdp_domain:
@@ -295,7 +298,7 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
                     rdp_port=None, room_id=None, username=None, password=None,
                     clear_credentials=False, vnc_username=None, vnc_password=None,
                     clear_vnc_password=False, rdp_username=None, rdp_password=None,
-                    rdp_domain=None, clear_rdp_password=False):
+                    rdp_domain=None, clear_rdp_password=False, rdp_security=None):
     """Met à jour une machine existante en place (id inchangé même si le
     nom change). Les identifiants ne sont modifiés que si username+password
     sont fournis, ou effacés si clear_credentials est vrai — sinon ils
@@ -335,6 +338,7 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
 
             if os_type == "windows":
                 m["rdp_port"] = int(rdp_port) if rdp_port else 3389
+                m["rdp_security"] = rdp_security or DEFAULT_RDP_SECURITY
                 if rdp_username:
                     m["rdp_username"] = rdp_username
                 else:
@@ -351,6 +355,7 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
                         m["rdp_password"] = encrypted_rdp_password
             else:
                 m.pop("rdp_port", None)
+                m.pop("rdp_security", None)
                 m.pop("rdp_username", None)
                 m.pop("rdp_password", None)
                 m.pop("rdp_domain", None)

@@ -158,7 +158,29 @@
       <label for="rdp_domain">Domaine (optionnel)</label>
       <input type="text" id="rdp_domain" name="rdp_domain" value="{{ machine.rdp_domain if machine else '' }}" placeholder="CORP">
     </div>
+    <div class="field">
+      <label for="rdp_security">Sécurité RDP</label>
+      {% set current_security = machine.rdp_security if machine else "nla" %}
+      <select id="rdp_security" name="rdp_security">
+        <option value="nla" {{ "selected" if current_security == "nla" else "" }}>NLA (recommandé, défaut des Windows récents)</option>
+        <option value="nla-ext" {{ "selected" if current_security == "nla-ext" else "" }}>NLA étendu (Hyper-V/RD Gateway)</option>
+        <option value="tls" {{ "selected" if current_security == "tls" else "" }}>TLS seul (RDSTLS, sans CredSSP)</option>
+        <option value="vmconnect" {{ "selected" if current_security == "vmconnect" else "" }}>VMConnect (Hyper-V)</option>
+        <option value="rdp" {{ "selected" if current_security == "rdp" else "" }}>RDP historique (sans TLS)</option>
+        <option value="any" {{ "selected" if current_security == "any" else "" }}>Négociation automatique</option>
+      </select>
+    </div>
   </div>
+  <p class="hint-box">
+    Si la connexion RDP échoue avec « Server refused connection (wrong
+    security type?) » côté guacd malgré des identifiants corrects,
+    c'est presque toujours ce réglage qu'il faut changer plutôt que
+    les identifiants : essayez <strong>TLS seul</strong> si NLA est
+    refusé (NLA désactivé côté machine cible), ou l'inverse si c'est
+    TLS qui échoue. « Négociation automatique » semble le choix le
+    plus sûr en théorie, mais un bug connu de FreeRDP/guacd le fait
+    parfois échouer là où un choix explicite fonctionne.
+  </p>
   {% if not credentials_enabled %}
   <p class="hint-box">
     La mémorisation du mot de passe RDP est désactivée: aucune

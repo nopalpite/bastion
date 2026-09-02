@@ -108,13 +108,21 @@ def test_rdp_params_for_machine(credentials_key):
     assert params["username"] == "admin"
     assert params["password"] == "s3cret"
     assert params["ignore-cert"] == "true"
-    # "any" (négociation automatique) échoue en pratique contre un
-    # serveur qui impose NLA -- "Server refused connection (wrong
-    # security type?)" côté guacd, confirmé en conditions réelles contre
-    # un vrai serveur Windows où mstsc (qui force NLA) se connectait très
-    # bien. "nla" explicite est le cas de très loin le plus courant
-    # (Windows moderne, NLA activé par défaut).
-    assert params["security"] == "nla"
+    # Sans rdp_security explicite sur la machine: repli sur DEFAULT_RDP_SECURITY
+    # ("nla") -- voir son commentaire pour pourquoi ce n'est PAS "any"
+    # (négociation automatique), qui a un bug connu et documenté côté
+    # FreeRDP/guacd face à un serveur qui impose NLA.
+    assert params["security"] == bridge.DEFAULT_RDP_SECURITY == "nla"
+
+
+def test_rdp_params_for_machine_uses_configured_security(credentials_key):
+    # Après deux échecs réels différents ("any" puis "nla" forcé, tous
+    # deux refusés par le même serveur Windows malgré des identifiants
+    # corrects), security est configurable par machine plutôt que figé
+    # dans le code -- voir templates/host_form.html.
+    machine = {"id": "srv-win", "host": "10.0.0.20", "rdp_security": "tls"}
+    params = bridge.rdp_params_for_machine(machine)
+    assert params["security"] == "tls"
 
 
 def test_rdp_params_for_machine_defaults_port(credentials_key):

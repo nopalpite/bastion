@@ -169,28 +169,49 @@ def connect_via_guacd(protocol, params, timeout=10):
         raise
 
 
+# Valeurs acceptées par guacd pour le paramètre RDP "security" (voir la
+# doc Guacamole, "Configuring Guacamole" — RDP, section "security"):
+#   nla      Network Level Authentication / CredSSP — le défaut sur les
+#            Windows modernes, celui que force un client comme mstsc.
+#   nla-ext  NLA + "Early User Authorization Result" (certains
+#            environnements Hyper-V/RD Gateway).
+#   tls      Chiffrement/authentification via TLS seul (RDSTLS), sans
+#            CredSSP — utilisé notamment en configuration load-balancée.
+#   vmconnect  Négociation automatique limitée aux protocoles connus de
+#              Hyper-V/VMConnect.
+#   rdp      Chiffrement RDP historique, sans TLS — désactivé par défaut
+#            sur les Windows récents.
+#   any      Négociation automatique (choisit le meilleur protocole
+#            commun) — en théorie le choix le plus sûr, MAIS un problème
+#            connu et documenté de FreeRDP/guacd le fait parfois échouer
+#            avec "Server refused connection (wrong security type?)"
+#            plutôt que de retomber correctement sur ce que le serveur
+#            propose réellement.
+RDP_SECURITY_MODES = ["nla", "nla-ext", "tls", "vmconnect", "rdp", "any"]
+DEFAULT_RDP_SECURITY = "nla"
+
+
 def rdp_params_for_machine(machine):
     """Construit le dict de paramètres RDP à partir d'une machine de
     l'inventaire — voir la doc Guacamole pour la liste complète des noms
-    de paramètres reconnus pour le protocole "rdp"."""
+    de paramètres reconnus pour le protocole "rdp".
+
+    security: pas de valeur universelle qui marche partout — "nla" est le
+    bon choix pour la plupart des Windows modernes (comportement par
+    défaut), mais certains serveurs (NLA désactivé côté machine cible,
+    configuration particulière...) le refusent explicitement malgré tout,
+    d'où le champ configurable par machine (voir templates/host_form.html)
+    plutôt qu'une valeur figée dans le code — après deux échecs réels
+    différents en conditions réelles ("any" puis "nla" forcé, tous deux
+    refusés par le même serveur), deviner une troisième valeur en dur
+    n'aurait fait que déplacer le problème sur la prochaine machine."""
     stored_password = machine.get("rdp_password")
     password = credentials.decrypt(stored_password) if stored_password else None
     params = {
         "hostname": machine["host"],
         "port": machine.get("rdp_port", 3389),
         "ignore-cert": "true",  # cert auto-signé typique sur un LAN interne
-        # "any" (négociation automatique) semble raisonnable en théorie,
-        # mais c'est un problème connu et documenté de FreeRDP/guacd: face
-        # à un serveur qui IMPOSE NLA (le cas par défaut sur les Windows
-        # modernes, exactement comme le fait mstsc), "any" échoue souvent
-        # avec "Server refused connection (wrong security type?)" côté
-        # guacd plutôt que de retomber correctement sur NLA — confirmé en
-        # conditions réelles (voir tests/test_rdp_protocol.py). "nla" en
-        # dur ici couvre le cas de très loin le plus courant ; si jamais
-        # une machine plus ancienne sans NLA doit être supportée, il
-        # faudra rendre ce champ configurable par machine plutôt que de
-        # repasser à "any".
-        "security": "nla",
+        "security": machine.get("rdp_security") or DEFAULT_RDP_SECURITY,
     }
     if machine.get("rdp_username"):
         params["username"] = machine["rdp_username"]

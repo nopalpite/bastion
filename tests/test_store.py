@@ -41,6 +41,30 @@ def test_add_machine_windows_default_rdp_port(machines_file):
     assert machine["rdp_port"] == 3389
 
 
+def test_add_machine_windows_default_rdp_security_is_nla(machines_file):
+    machine_id = store.add_machine(name="Win", os_type="windows", host="10.0.0.9")
+    machine = store.get_machine(machine_id)
+    assert machine["rdp_security"] == "nla"
+
+
+def test_add_machine_windows_custom_rdp_security(machines_file):
+    machine_id = store.add_machine(
+        name="Win", os_type="windows", host="10.0.0.9", rdp_security="tls",
+    )
+    machine = store.get_machine(machine_id)
+    assert machine["rdp_security"] == "tls"
+
+
+def test_update_machine_changes_rdp_security(machines_file):
+    machine_id = store.add_machine(name="Win", os_type="windows", host="10.0.0.9")
+    assert store.get_machine(machine_id)["rdp_security"] == "nla"
+
+    store.update_machine(
+        machine_id, name="Win", os_type="windows", host="10.0.0.9", rdp_security="tls",
+    )
+    assert store.get_machine(machine_id)["rdp_security"] == "tls"
+
+
 def test_add_windows_machine_stores_encrypted_rdp_credentials(machines_file, credentials_key):
     machine_id = store.add_machine(
         name="Win", os_type="windows", host="10.0.0.9",
@@ -66,6 +90,7 @@ def test_update_machine_switching_from_windows_clears_rdp_fields(machines_file, 
     store.update_machine(machine_id, name="Win", os_type="linux", host="10.0.0.9")
     machine = store.get_machine(machine_id)
     assert "rdp_port" not in machine
+    assert "rdp_security" not in machine
     assert "rdp_username" not in machine
     assert "rdp_password" not in machine
 
