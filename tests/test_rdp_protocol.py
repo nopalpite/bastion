@@ -21,6 +21,19 @@ class FakeSocket:
         return chunk
 
 
+class FakeHandshakeSocket(FakeSocket):
+    """FakeSocket qui enregistre aussi ce qui est envoyé via sendall(), pour
+    vérifier le contenu exact des instructions émises par le client (pas
+    seulement ce qu'il lit) — utilisé pour tester _handshake()."""
+
+    def __init__(self, data, chunk_size=None):
+        super().__init__(data, chunk_size)
+        self.sent = []
+
+    def sendall(self, data):
+        self.sent.append(data)
+
+
 def test_encode_instruction_basic():
     assert bridge.encode_instruction("select", "rdp") == b"6.select,3.rdp;"
 
@@ -102,3 +115,57 @@ def test_rdp_params_for_machine_defaults_port(credentials_key):
     params = bridge.rdp_params_for_machine(machine)
     assert params["port"] == 3389
     assert "username" not in params
+
+
+# --- _handshake: la vraie négociation avec guacd (select -> args ->
+# capacités client -> connect -> ready). Jusqu'ici, seules les primitives
+# bas niveau (encode/decode d'une instruction isolée) étaient testées —
+# jamais cette séquence, ce qui a laissé passer un vrai bug (voir
+# ci-dessous), découvert seulement contre un vrai guacd 1.6.0 en
+# production, pas en test. ---------------------------------------------
+
+def test_handshake_connect_includes_protocol_version():
+    # Le "connect" envoyé par le client doit inclure la version de
+    # protocole (reçue en premier dans "args") comme PREMIÈRE valeur,
+    # avant celles des paramètres — confirmé dans l'exemple donné par la
+    # doc officielle du protocole Guacamole (guacamole-protocol.html):
+    # "7.connect,13.VERSION_1_1_0,9.localhost,4.5900,0.,0.,0.;". L'omettre
+    # fait que "connect" a une valeur de MOINS que ce que guacd attend, et
+    # guacd refuse la connexion avec "Client did not return the expected
+    # number of arguments" — exactement le bug qui s'est produit en
+    # production contre un vrai guacd 1.6.0 avant ce correctif.
+    args_reply = bridge.encode_instruction("args", "VERSION_1_1_0", "hostname", "port")
+    ready_reply = bridge.encode_instruction("ready", "conn-id-1")
+    sock = FakeHandshakeSocket(args_reply + ready_reply)
+
+    leftover = bridge._handshake(sock, "rdp", {"hostname": "10.0.0.1", "port": "3389"})
+
+    assert leftover == b""
+    connect_sent = next(s for s in sock.sent if s.startswith(b"7.connect,"))
+    opcode, args, _ = bridge.read_instruction(FakeSocket(connect_sent), b"")
+    assert opcode == "connect"
+    assert args == ["VERSION_1_1_0", "10.0.0.1", "3389"]
+
+
+def test_handshake_connect_uses_empty_string_for_missing_params():
+    args_reply = bridge.encode_instruction("args", "VERSION_1_1_0", "hostname", "domain", "port")
+    ready_reply = bridge.encode_instruction("ready", "conn-id-2")
+    sock = FakeHandshakeSocket(args_reply + ready_reply)
+
+    # "domain" volontairement absent des params fournis: doit être envoyé
+    # comme chaîne vide, pas omis (voir le commentaire de _handshake).
+    bridge._handshake(sock, "rdp", {"hostname": "10.0.0.1", "port": "3389"})
+
+    connect_sent = next(s for s in sock.sent if s.startswith(b"7.connect,"))
+    _, args, _ = bridge.read_instruction(FakeSocket(connect_sent), b"")
+    assert args == ["VERSION_1_1_0", "10.0.0.1", "", "3389"]
+
+
+def test_handshake_raises_on_error_response():
+    import pytest
+    args_reply = bridge.encode_instruction("args", "VERSION_1_1_0", "hostname")
+    error_reply = bridge.encode_instruction("error", "identifiants refusés", "519")
+    sock = FakeHandshakeSocket(args_reply + error_reply)
+
+    with pytest.raises(bridge.GuacamoleError, match="identifiants refusés"):
+        bridge._handshake(sock, "rdp", {"hostname": "10.0.0.1"})

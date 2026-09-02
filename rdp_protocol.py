@@ -106,12 +106,24 @@ def read_instruction(sock, buf):
 # Séquence documentée par le protocole Guacamole: le CLIENT (ici,
 # rdp_bridge.py — côté navigateur, guacamole-common-js n'a lui-même pas
 # connaissance de cette négociation) choisit le protocole cible, guacd
-# répond avec la liste des paramètres qu'il attend pour ce protocole, le
-# client annonce ses capacités (taille d'écran, formats audio/vidéo/image
-# supportés — vides ici, on ne gère pas ces extensions), puis envoie
-# "connect" avec une valeur pour CHAQUE paramètre demandé, DANS L'ORDRE où
-# guacd les a listés (positionnel, pas nommé) — un paramètre non pertinent
-# est envoyé comme chaîne vide plutôt qu'omis.
+# répond avec sa version de protocole ET la liste des paramètres qu'il
+# attend pour ce protocole, le client annonce ses capacités (taille
+# d'écran, formats audio/vidéo/image supportés — vides ici, on ne gère
+# pas ces extensions), puis envoie "connect" avec CETTE MÊME VERSION en
+# première valeur, suivie d'une valeur pour CHAQUE paramètre demandé,
+# DANS L'ORDRE où guacd les a listés (positionnel, pas nommé) — un
+# paramètre non pertinent est envoyé comme chaîne vide plutôt qu'omis.
+#
+# Le renvoi de la version dans "connect" est facile à manquer en lisant
+# la spec en prose (elle dit surtout "une valeur par paramètre"), mais
+# est explicite dans l'exemple donné par la doc officielle du protocole
+# (guacamole-protocol.html): la version PRÉCÈDE les valeurs de paramètres
+# dans "connect", exactement comme dans "args" — l'omettre fait que
+# "connect" a une valeur de MOINS que ce que guacd attend, et guacd
+# refuse alors la connexion avec "Client did not return the expected
+# number of arguments" (confirmé en le prenant en défaut contre un vrai
+# guacd 1.6.0, pas seulement contre un faux serveur local — voir
+# tests/test_rdp_protocol.py::test_connect_includes_protocol_version).
 
 def _handshake(sock, protocol, params):
     buf = b""
@@ -120,8 +132,7 @@ def _handshake(sock, protocol, params):
     opcode, args, buf = read_instruction(sock, buf)
     if opcode != "args":
         raise GuacamoleError(f"guacd: attendu 'args', reçu {opcode!r} ({args!r}).")
-    # args[0] est la version du protocole Guacamole (non utilisée ici),
-    # le reste est la liste ordonnée des noms de paramètres attendus.
+    protocol_version = args[0]
     param_names = args[1:]
 
     sock.sendall(encode_instruction("size", 1024, 768, 96))
@@ -130,7 +141,7 @@ def _handshake(sock, protocol, params):
     sock.sendall(encode_instruction("image"))
 
     connect_values = [str(params.get(name, "")) for name in param_names]
-    sock.sendall(encode_instruction("connect", *connect_values))
+    sock.sendall(encode_instruction("connect", protocol_version, *connect_values))
 
     opcode, args, buf = read_instruction(sock, buf)
     if opcode == "error":
