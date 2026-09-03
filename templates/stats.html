@@ -44,7 +44,7 @@
 
 <div class="uptime-list">
   {% for row in rows %}
-  <div class="uptime-row">
+  <div class="uptime-row" data-machine="{{ row.machine.id }}">
     <div class="uptime-meta">
       <span class="uptime-name">{{ row.machine.name }}</span>
       <span class="uptime-pcts">
@@ -55,7 +55,11 @@
         {% endfor %}
       </span>
     </div>
-    <div class="uptime-timeline" data-machine="{{ row.machine.id }}"></div>
+    <div class="uptime-timeline"></div>
+    <div class="latency-block">
+      <span class="latency-label">Latence</span>
+      <div class="latency-chart"></div>
+    </div>
   </div>
   {% endfor %}
 </div>

@@ -55,3 +55,34 @@ toggleLayoutBtn.addEventListener("click", () => {
   applyLayout(listView);
   localStorage.setItem(LAYOUT_STORAGE_KEY, listView ? "1" : "0");
 });
+
+// --- Recherche/filtre --------------------------------------------------
+//
+// Purement côté client (tout est déjà dans le DOM, filtré uniquement par
+// salle côté serveur) : pas d'aller-retour réseau, filtrage instantané à
+// chaque frappe. Un groupe de salle sans aucune carte visible se masque
+// entièrement plutôt que de laisser un en-tête de salle vide affiché.
+const searchInput = document.getElementById("machine-search");
+
+function applyMachineFilter(query) {
+  const q = query.trim().toLowerCase();
+  let anyVisible = false;
+
+  document.querySelectorAll(".machine-card").forEach((card) => {
+    const visible = q === "" || (card.dataset.search || "").includes(q);
+    card.classList.toggle("filtered-out", !visible);
+    if (visible) anyVisible = true;
+  });
+
+  document.querySelectorAll(".room-group").forEach((group) => {
+    const hasVisibleCard = !!group.querySelector(".machine-card:not(.filtered-out)");
+    group.classList.toggle("filtered-out", !hasVisibleCard);
+  });
+
+  const emptyState = document.getElementById("search-empty-state");
+  if (emptyState) emptyState.hidden = !(q !== "" && !anyVisible);
+}
+
+if (searchInput) {
+  searchInput.addEventListener("input", () => applyMachineFilter(searchInput.value));
+}

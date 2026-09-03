@@ -96,3 +96,34 @@ def test_get_timeline_buckets_and_fills_gaps_with_none(history_db):
 def test_get_timeline_empty_when_no_data(history_db):
     timeline = history.get_timeline("unknown", since_seconds=3600, buckets=6)
     assert timeline == [None] * 6
+
+
+def test_get_latency_timeline_buckets_and_fills_gaps_with_none(history_db):
+    now = time.time()
+    history.record_check("m1", "up", 10.0, checked_at=now - 3550)  # bucket 0
+    history.record_check("m1", "up", 30.0, checked_at=now - 200)  # bucket 3
+    history.record_check("m1", "up", 50.0, checked_at=now - 190)  # bucket 3 aussi
+
+    timeline = history.get_latency_timeline("m1", since_seconds=3600, buckets=4)
+
+    assert len(timeline) == 4
+    assert timeline[0] == 10.0
+    assert timeline[3] == 40.0  # moyenne de 30 et 50
+    assert timeline[1] is None
+    assert timeline[2] is None
+
+
+def test_get_latency_timeline_ignores_down_checks(history_db):
+    # Une vérification "down" (latency_ms=None) ne doit ni compter dans la
+    # moyenne ni faire apparaître un segment à 0 -- juste être ignorée.
+    history.record_check("m1", "down", None)
+    history.record_check("m1", "up", 20.0)
+
+    timeline = history.get_latency_timeline("m1", since_seconds=3600, buckets=1)
+
+    assert timeline == [20.0]
+
+
+def test_get_latency_timeline_empty_when_no_data(history_db):
+    timeline = history.get_latency_timeline("unknown", since_seconds=3600, buckets=6)
+    assert timeline == [None] * 6

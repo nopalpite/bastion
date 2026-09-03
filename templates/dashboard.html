@@ -15,6 +15,12 @@
   </div>
 </div>
 
+{% if total_count %}
+<div class="dashboard-search">
+  <input type="search" id="machine-search" placeholder="Rechercher (nom, hôte, OS)…">
+</div>
+{% endif %}
+
 {% if rooms %}
 <div class="room-tabs">
   <a class="tab {{ 'active' if not active_room else '' }}" href="{{ url_for('dashboard') }}">Toutes</a>
@@ -39,7 +45,8 @@
   <div class="machine-grid" id="machine-grid">
     {% for m in group.machines %}
     {% set st = statuses.get(m.id) %}
-    <div class="machine-card" data-id="{{ m.id }}">
+    <div class="machine-card" data-id="{{ m.id }}"
+         data-search="{{ (m.name ~ ' ' ~ m.host ~ ' ' ~ m.os) | lower }}">
       <div class="row1">
         <span class="machine-name">{{ m.name }}</span>
         <span class="status-dot {{ st.status if st else 'unknown' }}" data-role="dot"></span>
@@ -69,6 +76,8 @@
 {% else %}
 <p class="empty-state">Aucune machine pour l'instant. <a href="{{ url_for('new_host') }}">Ajoutez-en une</a>.</p>
 {% endfor %}
+
+<p class="empty-state" id="search-empty-state" hidden>Aucune machine ne correspond à la recherche.</p>
 
 <!-- Popup d'actions sur une machine -->
 {% include "_action_modal.html" %}

@@ -218,8 +218,11 @@ def api_history(machine_id):
     if not store.get_machine(machine_id):
         abort(404)
     hours = request.args.get("hours", type=int) or 24
-    timeline = history.get_timeline(machine_id, hours * 3600)
-    return jsonify({"timeline": timeline})
+    since_seconds = hours * 3600
+    return jsonify({
+        "timeline": history.get_timeline(machine_id, since_seconds),
+        "latency": history.get_latency_timeline(machine_id, since_seconds),
+    })
 
 
 # --- Gestion de l'inventaire: ajout d'hôte / salle ---------------------

@@ -153,3 +153,4 @@ def test_api_history_returns_timeline_json(client):
 
     assert resp.status_code == 200
     assert resp.json["timeline"][-1] == 100.0
+    assert resp.json["latency"][-1] == 5.0

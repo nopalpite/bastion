@@ -556,6 +556,22 @@ body.page-map .container { max-width: none; }
 .btn.danger { border-color: #5c2226; color: var(--down); }
 .btn.danger:hover { border-color: var(--down); }
 
+.dashboard-search { margin-bottom: 16px; }
+.dashboard-search input {
+  width: 100%;
+  max-width: 360px;
+  padding: 9px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.dashboard-search input:focus { outline: none; border-color: var(--accent); }
+
+.machine-card.filtered-out, .room-group.filtered-out { display: none; }
+
 .room-tabs {
   display: flex;
   gap: 6px;
@@ -1077,5 +1093,32 @@ body.modal-open {
   flex: 1 1 0;
   min-width: 2px;
   border-radius: 2px;
+}
+
+.latency-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.latency-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 0 0 auto;
+}
+.latency-chart {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+}
+.latency-chart svg { flex: 1 1 auto; height: 36px; width: 100%; }
+.latency-range {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
 }
 

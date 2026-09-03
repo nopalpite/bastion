@@ -138,3 +138,43 @@ def get_timeline(machine_id, since_seconds, buckets=60):
         else:
             timeline.append(None)
     return timeline
+
+
+def get_latency_timeline(machine_id, since_seconds, buckets=60):
+    """Comme get_timeline() ci-dessus, mais pour la latence moyenne (ms)
+    plutôt que le taux de disponibilité — courbe de latence de la page
+    /stats. AVG(latency_ms) ignore nativement les lignes NULL
+    (vérifications "down", sans latence) : un segment sans aucune
+    vérification "up" est None (pas 0, qui laisserait croire à une
+    latence nulle plutôt qu'à une absence de donnée)."""
+    since = time.time() - since_seconds
+    bucket_seconds = since_seconds / buckets
+
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT CAST((checked_at - ?) / ? AS INTEGER) AS bucket, "
+            "AVG(latency_ms), COUNT(latency_ms) "
+            "FROM checks WHERE machine_id = ? AND checked_at >= ? "
+            "GROUP BY bucket",
+            (since, bucket_seconds, machine_id, since),
+        ).fetchall()
+
+    # Même raison de regroupement que get_timeline() ci-dessus — moyenne
+    # pondérée par le nombre de mesures si deux buckets SQL fusionnent
+    # dans le même segment final.
+    by_bucket = {}
+    for bucket, avg_latency, count in rows:
+        if not count:
+            continue
+        idx = min(int(bucket), buckets - 1)
+        prev_sum, prev_count = by_bucket.get(idx, (0.0, 0))
+        by_bucket[idx] = (prev_sum + avg_latency * count, prev_count + count)
+
+    timeline = []
+    for i in range(buckets):
+        if i in by_bucket:
+            total, count = by_bucket[i]
+            timeline.append(round(total / count, 1))
+        else:
+            timeline.append(None)
+    return timeline
