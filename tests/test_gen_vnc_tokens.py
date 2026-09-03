@@ -1,6 +1,5 @@
 """Tests pour gen_vnc_tokens.py: toute machine avec un port VNC est routée
-vers son pont local dédié (vnc_tls_bridge.py). Le RDP n'apparaît pas ici —
-rdp_bridge.py sert ses propres WebSocket, voir son docstring."""
+vers son pont local dédié (vnc_tls_bridge.py)."""
 import runpy
 
 import store
@@ -35,22 +34,12 @@ def test_machine_without_vnc_port_is_skipped(machines_file, monkeypatch, capsys)
     assert output.strip() == ""
 
 
-def test_rdp_only_machine_produces_no_token(machines_file, monkeypatch, capsys):
-    monkeypatch.setattr(
-        store, "load_machines",
-        lambda: [{"id": "srv-win", "host": "10.0.0.8", "rdp_port": 3389}],
-    )
-    output = _run_gen_vnc_tokens(capsys)
-    assert output.strip() == ""
-
-
-def test_machine_with_both_vnc_and_rdp_only_gets_a_vnc_token(machines_file, monkeypatch, capsys):
+def test_machine_with_vnc_port_gets_a_token(machines_file, monkeypatch, capsys):
     monkeypatch.setattr(
         store, "load_machines",
         lambda: [{
             "id": "srv-win", "host": "10.0.0.8",
             "vnc_port": 5900, "vnc_bridge_port": 6100,
-            "rdp_port": 3389,
         }],
     )
     output = _run_gen_vnc_tokens(capsys)

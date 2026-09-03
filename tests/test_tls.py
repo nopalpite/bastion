@@ -1,4 +1,4 @@
-"""Tests pour tls.py: certificat TLS optionnel (app, VNC, RDP) sans reverse
+"""Tests pour tls.py: certificat TLS optionnel (app, VNC) sans reverse
 proxy — voir son docstring."""
 import os
 

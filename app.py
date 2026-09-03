@@ -164,26 +164,6 @@ def vnc(machine_id):
     )
 
 
-@app.route("/rdp/<machine_id>")
-@login_required
-def rdp(machine_id):
-    machine = store.get_machine(machine_id)
-    if not machine or not machine.get("rdp_port"):
-        abort(404)
-
-    # Contrairement au VNC, l'authentification RDP a lieu entièrement côté
-    # serveur (rdp_bridge.py les fournit à guacd) — rien à déchiffrer ni à
-    # transmettre au navigateur ici. rdp_bridge.py sert ses propres
-    # WebSocket (pas websockify, voir son docstring), d'où un port/chemin
-    # de config séparé de celui du VNC.
-    return render_template(
-        "rdp.html",
-        machine=machine,
-        rdp_ws_port=config.RDP_WS_PORT,
-        rdp_ws_path=config.RDP_WS_PATH,
-    )
-
-
 # --- Gestion de l'inventaire: ajout d'hôte / salle ---------------------
 
 @app.route("/hosts/new", methods=["GET", "POST"])
@@ -196,17 +176,12 @@ def new_host():
         host = request.form.get("host", "").strip()
         ssh_port = request.form.get("ssh_port") or 22
         vnc_port = request.form.get("vnc_port") or None
-        rdp_port = request.form.get("rdp_port") or None
         room_id = request.form.get("room") or None
         remember = request.form.get("remember") == "on"
         username = request.form.get("username") or None
         password = request.form.get("password") or None
         vnc_username = request.form.get("vnc_username") or None
         vnc_password = request.form.get("vnc_password") or None
-        rdp_username = request.form.get("rdp_username") or None
-        rdp_password = request.form.get("rdp_password") or None
-        rdp_domain = request.form.get("rdp_domain") or None
-        rdp_security = request.form.get("rdp_security") or None
 
         if not name or not host or os_type not in ("linux", "windows"):
             return render_template(
@@ -217,16 +192,12 @@ def new_host():
 
         store.add_machine(
             name=name, os_type=os_type, host=host,
-            ssh_port=ssh_port, vnc_port=vnc_port, rdp_port=rdp_port,
+            ssh_port=ssh_port, vnc_port=vnc_port,
             room_id=room_id,
             username=username if remember else None,
             password=password if remember else None,
             vnc_username=vnc_username,
             vnc_password=vnc_password,
-            rdp_username=rdp_username,
-            rdp_password=rdp_password,
-            rdp_domain=rdp_domain,
-            rdp_security=rdp_security,
         )
         return redirect(url_for("dashboard"))
 
@@ -283,7 +254,6 @@ def edit_host(machine_id):
         host = request.form.get("host", "").strip()
         ssh_port = request.form.get("ssh_port") or 22
         vnc_port = request.form.get("vnc_port") or None
-        rdp_port = request.form.get("rdp_port") or None
         room_id = request.form.get("room") or None
         remember = request.form.get("remember") == "on"
         clear_credentials = request.form.get("clear_credentials") == "on"
@@ -292,11 +262,6 @@ def edit_host(machine_id):
         vnc_username = request.form.get("vnc_username") or None
         vnc_password = request.form.get("vnc_password") or None
         clear_vnc_password = request.form.get("clear_vnc_password") == "on"
-        rdp_username = request.form.get("rdp_username") or None
-        rdp_password = request.form.get("rdp_password") or None
-        rdp_domain = request.form.get("rdp_domain") or None
-        clear_rdp_password = request.form.get("clear_rdp_password") == "on"
-        rdp_security = request.form.get("rdp_security") or None
 
         if not name or not host or os_type not in ("linux", "windows"):
             return render_template(
@@ -307,7 +272,7 @@ def edit_host(machine_id):
 
         store.update_machine(
             machine_id, name=name, os_type=os_type, host=host,
-            ssh_port=ssh_port, vnc_port=vnc_port, rdp_port=rdp_port,
+            ssh_port=ssh_port, vnc_port=vnc_port,
             room_id=room_id,
             username=username if remember else None,
             password=password if remember else None,
@@ -315,11 +280,6 @@ def edit_host(machine_id):
             vnc_username=vnc_username,
             vnc_password=vnc_password,
             clear_vnc_password=clear_vnc_password,
-            rdp_username=rdp_username,
-            rdp_password=rdp_password,
-            rdp_domain=rdp_domain,
-            clear_rdp_password=clear_rdp_password,
-            rdp_security=rdp_security,
         )
         return redirect(url_for("dashboard"))
 
@@ -455,8 +415,8 @@ if __name__ == "__main__":
     if cert_path:
         # Flask-SocketIO (mode eventlet) accepte directement certfile/keyfile
         # et enveloppe le socket d'écoute avec eventlet.wrap_ssl() — voir
-        # tls.py pour la cohérence avec les deux autres serveurs réseau
-        # (websockify, rdp_bridge.py).
+        # tls.py pour la cohérence avec l'autre serveur réseau du projet
+        # (websockify).
         run_kwargs["certfile"] = cert_path
         run_kwargs["keyfile"] = key_path
     socketio.run(app, **run_kwargs)

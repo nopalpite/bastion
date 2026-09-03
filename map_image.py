@@ -15,8 +15,8 @@ navigateur — voir app.py:map_view et map.html) pour les formats raster
 Pillow puisse lire : son ratio réel est déterminé côté navigateur à la
 place (voir le filet de sécurité dans static/js/map.js).
 
-Module séparé de app.py (comme rdp_protocol.py) pour rester testable sans
-dépendre d'eventlet (voir son docstring)."""
+Module séparé de app.py pour rester testable sans dépendre d'eventlet
+(voir son docstring)."""
 from PIL import Image, UnidentifiedImageError
 
 # Ratio par défaut: salle sans plan importé (fond neutre), ou image dont

@@ -37,7 +37,6 @@ machines:
     os: windows
     host: 192.168.1.20
     ssh_port: 22
-    rdp_port: 3389
     vnc_port: 5900
     room: salle-b
     position: {x: 50, y: 50}

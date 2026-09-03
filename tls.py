@@ -2,12 +2,11 @@
 dépendre d'un reverse proxy externe (voir la section TLS du README) — pour
 les déploiements qui n'en ont pas.
 
-Utilisé de façon identique par les trois serveurs réseau du projet
-(app.py, le websockify du VNC via start_websockify.py, rdp_bridge.py) :
-n'activer le chiffrement que sur l'un d'eux recréerait exactement le bug
-de contenu mixte déjà rencontré avec un reverse proxy mal configuré (page
-en https, WebSocket VNC/RDP resté en clair, bloqué par le navigateur) —
-voir [[project-rdp-bridge-architecture]].
+Utilisé de façon identique par les deux serveurs réseau du projet (app.py,
+le websockify du VNC via start_websockify.py) : n'activer le chiffrement
+que sur l'un d'eux recréerait exactement le bug de contenu mixte déjà
+rencontré avec un reverse proxy mal configuré (page en https, WebSocket
+VNC resté en clair, bloqué par le navigateur).
 """
 import datetime
 import os
@@ -24,7 +23,7 @@ def generate_self_signed(cert_path=SELFSIGNED_CERT, key_path=SELFSIGNED_KEY):
     n'existent pas déjà. Ne jamais régénérer si les deux fichiers sont déjà
     présents: une nouvelle paire à chaque démarrage changerait l'empreinte
     à chaque fois, provoquant un avertissement de sécurité navigateur (et
-    un rejet TOFU côté clients VNC/RDP natifs) à répétition pour rien.
+    un rejet TOFU côté clients VNC natifs) à répétition pour rien.
     """
     if os.path.exists(cert_path) and os.path.exists(key_path):
         return

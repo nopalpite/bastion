@@ -1,8 +1,8 @@
 """Boucle de monitoring: vérifie périodiquement si chaque machine répond
 au ping ICMP (statut principal, affiché comme pastille verte/rouge), et
-teste séparément la disponibilité de chaque service configuré (SSH, VNC,
-RDP) pour affichage sous forme de badges. Les deux sont indépendants:
-une machine peut être "up" (répond au ping) avec un service down, ou
+teste séparément la disponibilité de chaque service configuré (SSH, VNC)
+pour affichage sous forme de badges. Les deux sont indépendants: une
+machine peut être "up" (répond au ping) avec un service down, ou
 inversement.
 """
 import platform
@@ -21,7 +21,7 @@ IS_WINDOWS = platform.system().lower() == "windows"
 
 # état partagé, protégé par un lock:
 # {machine_id: {"status": "up"/"down", "latency_ms": float|None,
-#               "services": {"ssh": bool, "vnc": bool, "rdp": bool},
+#               "services": {"ssh": bool, "vnc": bool},
 #               "checked_at": float}}
 status_lock = threading.Lock()
 status_store = {}
@@ -64,8 +64,7 @@ def check_port(host, port, timeout=CHECK_TIMEOUT_SECONDS):
 
 def _check_services(machine):
     """Teste les services configurés de la machine (SSH, VNC) et retourne
-    un dict {"ssh": bool, "vnc": bool} (RDP n'est volontairement pas
-    testé, pas de moyen léger équivalent connu — voir README).
+    un dict {"ssh": bool, "vnc": bool}.
 
     VNC a un historique ici: une version précédente sondait ce port en
     continu et ça avait fini par déclencher la protection anti-bruteforce

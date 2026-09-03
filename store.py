@@ -32,7 +32,6 @@ import yaml
 
 import credentials
 from config import MACHINES_FILE
-from rdp_protocol import DEFAULT_RDP_SECURITY
 
 _lock = threading.Lock()
 
@@ -197,11 +196,9 @@ def _next_vnc_bridge_port(data):
     return port
 
 
-def add_machine(name, os_type, host, ssh_port=22, vnc_port=None, rdp_port=None,
+def add_machine(name, os_type, host, ssh_port=22, vnc_port=None,
                  room_id=None, username=None, password=None,
-                 vnc_username=None, vnc_password=None,
-                 rdp_username=None, rdp_password=None, rdp_domain=None,
-                 rdp_security=None):
+                 vnc_username=None, vnc_password=None):
     with _lock:
         data = _load()
         existing = {m["id"] for m in data["machines"]}
@@ -222,16 +219,6 @@ def add_machine(name, os_type, host, ssh_port=22, vnc_port=None, rdp_port=None,
             if encrypted_vnc_password:
                 entry["vnc_password"] = encrypted_vnc_password
             entry["vnc_bridge_port"] = _next_vnc_bridge_port(data)
-        if os_type == "windows":
-            entry["rdp_port"] = int(rdp_port) if rdp_port else 3389
-            entry["rdp_security"] = rdp_security or DEFAULT_RDP_SECURITY
-            if rdp_username:
-                entry["rdp_username"] = rdp_username
-            if rdp_domain:
-                entry["rdp_domain"] = rdp_domain
-            encrypted_rdp_password = credentials.encrypt(rdp_password) if rdp_password else None
-            if encrypted_rdp_password:
-                entry["rdp_password"] = encrypted_rdp_password
         if room_id:
             entry["room"] = room_id
             # positionné en grille par défaut, à déplacer ensuite par
@@ -295,15 +282,13 @@ def set_machine_vnc_cert_fingerprint(machine_id, fingerprint):
 
 
 def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
-                    rdp_port=None, room_id=None, username=None, password=None,
+                    room_id=None, username=None, password=None,
                     clear_credentials=False, vnc_username=None, vnc_password=None,
-                    clear_vnc_password=False, rdp_username=None, rdp_password=None,
-                    rdp_domain=None, clear_rdp_password=False, rdp_security=None):
+                    clear_vnc_password=False):
     """Met à jour une machine existante en place (id inchangé même si le
     nom change). Les identifiants ne sont modifiés que si username+password
     sont fournis, ou effacés si clear_credentials est vrai — sinon ils
-    restent tels quels. Même logique pour vnc_password/clear_vnc_password et
-    rdp_password/clear_rdp_password."""
+    restent tels quels. Même logique pour vnc_password/clear_vnc_password."""
     with _lock:
         data = _load()
         for m in data["machines"]:
@@ -335,30 +320,6 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
                 m.pop("vnc_password", None)
                 m.pop("vnc_bridge_port", None)
                 m.pop("vnc_tls_cert_fingerprint", None)
-
-            if os_type == "windows":
-                m["rdp_port"] = int(rdp_port) if rdp_port else 3389
-                m["rdp_security"] = rdp_security or DEFAULT_RDP_SECURITY
-                if rdp_username:
-                    m["rdp_username"] = rdp_username
-                else:
-                    m.pop("rdp_username", None)
-                if rdp_domain:
-                    m["rdp_domain"] = rdp_domain
-                else:
-                    m.pop("rdp_domain", None)
-                if clear_rdp_password:
-                    m.pop("rdp_password", None)
-                elif rdp_password:
-                    encrypted_rdp_password = credentials.encrypt(rdp_password)
-                    if encrypted_rdp_password:
-                        m["rdp_password"] = encrypted_rdp_password
-            else:
-                m.pop("rdp_port", None)
-                m.pop("rdp_security", None)
-                m.pop("rdp_username", None)
-                m.pop("rdp_password", None)
-                m.pop("rdp_domain", None)
 
             # la position n'a plus de sens si on change la machine de salle
             room_changed = room_id != m.get("room")

@@ -1,5 +1,4 @@
-"""Génère le fichier de tokens pour websockify (VNC uniquement — le RDP ne
-passe pas par websockify, voir plus bas).
+"""Génère le fichier de tokens pour websockify (VNC).
 
 Websockify, lancé en mode multiplexé avec un plugin TokenFile, accepte une
 connexion websocket du type ws://host:6080/?token=<token> et la redirige
@@ -11,14 +10,6 @@ vers la machine cible — le pont sonde lui-même ce que le serveur propose à
 chaque connexion et s'adapte (relais transparent pour un serveur VNC
 "classique", négociation VeNCrypt/TLS complète sinon), façon vncviewer.
 Pas besoin de savoir à l'avance quel type de sécurité une machine utilise.
-
-Le RDP (rdp_bridge.py, via guacd) n'apparaît PAS ici : contrairement au VNC,
-son navigateur (guacamole-common-js) ouvre son WebSocket avec le
-sous-protocole "guacamole", que websockify ne connaît pas et ne relaierait
-pas — rdp_bridge.py sert donc lui-même ses connexions WebSocket, sur son
-propre port (BASTION_RDP_WS_PORT, voir config.py), et route chaque connexion
-vers la bonne machine via le paramètre "?token=<id_machine>" de l'URL, sans
-fichier de tokens séparé. Voir le docstring de rdp_bridge.py.
 
 Ce fichier est régénéré à partir de machines.yaml (a) au démarrage du
 conteneur Docker (voir docker/entrypoint.sh) et (b) automatiquement par

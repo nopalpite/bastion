@@ -1,17 +1,16 @@
-# Bastion — dashboard + SSH/VNC/RDP web
+# Bastion — dashboard + SSH/VNC web
 
 [![CI](https://github.com/nopalpite/bastion/actions/workflows/ci.yml/badge.svg)](https://github.com/nopalpite/bastion/actions/workflows/ci.yml)
 [![Docker build](https://github.com/nopalpite/bastion/actions/workflows/docker-build.yml/badge.svg)](https://github.com/nopalpite/bastion/actions/workflows/docker-build.yml)
 
 Interface simple pour superviser un parc de machines Windows/Linux et s'y
-connecter en SSH, VNC ou RDP directement depuis le navigateur.
+connecter en SSH ou VNC directement depuis le navigateur.
 
 ## Stack
 
 - **Flask** + **Flask-SocketIO** : app web + canal temps réel (statuts, terminal SSH, SFTP)
 - **Paramiko** : connexion SSH côté serveur, relayée vers un terminal `xterm.js`
 - **noVNC** + **websockify** : accès VNC dans le navigateur
-- **guacd** (composant natif du projet Apache Guacamole, embarque FreeRDP) + **guacamole-common-js** : accès RDP dans le navigateur — voir le pont RDP ci-dessous
 - **YAML** (`machines.yaml`) : inventaire des machines, pas de base de données
 
 Choix volontaire : un seul process Python (l'appli + websockify dans le
@@ -22,12 +21,11 @@ dépendance lourde. Facile à lire, facile à étendre.
 
 - **Dashboard de monitoring** : statut ping (vivant/injoignable) de chaque machine, plus un badge SSH indiquant si le port répond — groupées par salle.
 - **Ajout d'hôtes et de salles depuis l'interface** (`+ Hôte` / `+ Salle`), en plus de l'édition directe de `machines.yaml`. Édition et suppression possibles ensuite.
-- **Plan interactif par salle** (`/map/<salle>`) : importez une image de plan (n'importe quelle résolution/ratio, voir plus bas), placez les machines dessus par glisser-déposer (souris et tactile), cliquez sur une machine pour ouvrir un accès rapide SSH/VNC/RDP ou déclencher un reboot/shutdown.
+- **Plan interactif par salle** (`/map/<salle>`) : importez une image de plan (n'importe quelle résolution/ratio, voir plus bas), placez les machines dessus par glisser-déposer (souris et tactile), cliquez sur une machine pour ouvrir un accès rapide SSH/VNC ou déclencher un reboot/shutdown.
 - **Terminal SSH** dans le navigateur, avec navigateur de fichiers SFTP dans une colonne latérale (façon MobaXterm).
 - **VNC** dans le navigateur via noVNC, y compris les serveurs chiffrés (VeNCrypt/TLS, RealVNC...) — voir le pont VNC générique ci-dessous.
-- **RDP** (machines Windows) dans le navigateur via guacd — voir le pont RDP ci-dessous.
 - **Épinglage de la clé d'hôte SSH (TOFU)** : la première connexion à une machine mémorise sa clé publique ; si elle change ensuite, la connexion est bloquée avec une alerte explicite.
-- **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion. Le RDP, lui, **nécessite toujours** des identifiants mémorisés (voir le pont RDP ci-dessous).
+- **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion.
 
 ## Plan interactif : alignement position <-> image, quel que soit l'écran
 
@@ -135,63 +133,6 @@ vérifier après coup ce que `vnc_tls_bridge.py` a réellement négocié :
 docker exec bastion python3 debug_vnc_security.py <host> <port>
 ```
 
-## Pont RDP (`rdp_bridge.py`, via guacd)
-
-Contrairement au VNC (protocole simple, ré-implémenté directement dans
-`vnc_tls_bridge.py`), le RDP embarque son propre chiffrement, la
-négociation NLA/CredSSP, un pipeline de rendu bitmap complexe et des
-canaux virtuels — une ré-implémentation maison serait un travail d'une
-tout autre ampleur. `rdp_bridge.py` délègue donc tout ce travail à
-**guacd**, le composant natif (C, embarque FreeRDP) du projet Apache
-Guacamole, via l'image Docker officielle `guacamole/guacd` — sans
-utiliser le reste de Guacamole (la webapp `guacamole-client`, en Java/
-Tomcat + base de données, gère ses propres utilisateurs/connexions et
-duplique une bonne partie de ce que cette appli fait déjà).
-
-Architecture :
-```
-navigateur --WebSocket("guacamole")--> rdp_bridge.py --TCP--> guacd --RDP--> machine cible
-            (guacamole-common-js)      (protocole Guacamole)   (FreeRDP)
-```
-
-`rdp_bridge.py` sert **lui-même** les connexions WebSocket du navigateur,
-contrairement au VNC qui passe par `websockify` : `guacamole-common-js`
-ouvre son WebSocket avec le sous-protocole `"guacamole"`, que `websockify`
-ne connaît pas (il négocie ses propres sous-protocoles `binary`/`base64`)
-— la poignée de main WebSocket échouerait côté navigateur avant même
-d'atteindre le pont. `rdp_bridge.py` écoute donc sur son propre port
-(`BASTION_RDP_WS_PORT`, `6081` par défaut) et route chaque connexion vers
-la bonne machine via le paramètre `?token=<id_machine>` de l'URL — pas de
-fichier de tokens séparé comme pour websockify/VNC.
-
-La logique de négociation avec guacd (encodage/décodage du protocole
-Guacamole — texte, éléments préfixés par leur longueur en caractères
-Unicode) vit dans `rdp_protocol.py`, testée indépendamment de la partie
-WebSocket (voir `tests/test_rdp_protocol.py`).
-
-**Authentification toujours côté serveur** : contrairement au VNC non
-chiffré (où noVNC peut demander le mot de passe à la volée dans le
-navigateur), le RDP négocié par guacd exige les identifiants dès
-l'instruction `connect` — `rdp_bridge.py` les fournit lui-même à guacd, à
-partir de `rdp_username`/`rdp_password`/`rdp_domain` mémorisés pour la
-machine (chiffrés, voir `BASTION_CREDENTIALS_KEY`). Sans ces identifiants
-mémorisés, la connexion RDP échoue avec un message explicite plutôt que de
-proposer une saisie interactive.
-
-**Type de sécurité RDP (`rdp_security`, configurable par machine)** :
-guacd/FreeRDP négocie un chiffrement/authentification RDP distinct du
-protocole Guacamole lui-même — `nla` (Network Level Authentication /
-CredSSP) par défaut, le choix des Windows modernes et de `mstsc`. Il n'y
-a pas de valeur universelle : certains serveurs refusent explicitement
-NLA malgré tout (`Server refused connection (wrong security type?)` côté
-guacd), et la négociation automatique (`any`) a un bug connu et documenté
-côté FreeRDP/guacd qui la fait parfois échouer plutôt que de retomber
-correctement sur ce que le serveur accepte réellement. Si la connexion
-échoue avec ce message malgré des identifiants corrects, changez ce
-réglage (formulaire d'édition de l'hôte) avant de suspecter autre chose —
-essayez `tls` si `nla` est refusé, ou l'inverse. Valeurs acceptées : voir
-`RDP_SECURITY_MODES` dans `rdp_protocol.py`.
-
 ## Structure
 
 ```
@@ -209,10 +150,8 @@ bastion/
   gen_vnc_tokens.py        génère le fichier de tokens pour websockify (VNC uniquement)
   vnc_tls_bridge.py        pont VNC générique (relais transparent, ou VeNCrypt/TLS si besoin)
   debug_vnc_security.py    diagnostic RFB autonome (types de sécurité VNC)
-  rdp_bridge.py            pont RDP: sert le WebSocket "guacamole" et relaie vers guacd
-  rdp_protocol.py          négociation avec guacd (protocole Guacamole, testable sans eventlet)
   machines.yaml           inventaire: salles + machines
-  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc, rdp)
+  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc)
   static/css/            style.css (thème console sombre)
   static/js/              dashboard.js, terminal.js, sftp.js, map.js, actions.js
   static/uploads/maps/    images de plan uploadées
@@ -288,20 +227,6 @@ docker exec bastion supervisorctl status
 Si `websockify` est en `FATAL` ou en boucle de redémarrage, regardez
 `docker logs bastion` pour voir l'erreur exacte.
 
-### guacd (pour l'accès RDP)
-
-`guacd` n'est pas une bibliothèque Python : c'est un démon natif séparé,
-lancé via l'image Docker officielle `guacamole/guacd`. Pour du dev local
-hors Docker (`python app.py` directement), lancez-le à part :
-
-```bash
-docker run --name guacd --network host -d guacamole/guacd:1.6.0
-```
-
-(`rdp_bridge.py` s'y connecte sur `127.0.0.1:4822`, non configurable —
-voir `rdp_protocol.py`.) Avec `docker compose up`, c'est déjà géré : voir
-le service `guacd` dans l'exemple `docker-compose.yml` plus bas.
-
 ## Monitoring
 
 Chaque machine est pingée toutes les 15 secondes (`monitor.py`), via la
@@ -373,11 +298,9 @@ Variables d'environnement utiles :
 | `BASTION_ADMIN_USER` / `BASTION_ADMIN_PASSWORD` | identifiants de connexion à l'interface | `admin` / `admin` |
 | `BASTION_VNC_WS_PORT` | port où joindre le proxy VNC (l'hôte est déterminé automatiquement par le navigateur) | `6080` |
 | `BASTION_VNC_WS_PATH` | si définie (ex: `/vnc-ws/`), route le VNC via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
-| `BASTION_RDP_WS_PORT` | port où `rdp_bridge.py` sert ses WebSocket (voir le pont RDP ci-dessus) | `6081` |
-| `BASTION_RDP_WS_PATH` | si définie (ex: `/rdp-ws/`), route le RDP via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
 | `BASTION_CREDENTIALS_KEY` | clé de chiffrement des identifiants SSH mémorisés. Sans elle, la mémorisation est désactivée. Générer avec `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | (aucune) |
 | `BASTION_DATA_DIR` | dossier contenant `machines.yaml`. L'image Docker la définit à `/app/config` (voir la section Docker) ; sans intérêt à changer hors Docker | dossier de l'appli |
-| `BASTION_TLS_SELFSIGNED` | si `true`, sert HTTPS/WSS directement (app + VNC + RDP) avec un certificat auto-signé généré et géré par Bastion — voir la section "TLS sans reverse proxy" | (vide, HTTP) |
+| `BASTION_TLS_SELFSIGNED` | si `true`, sert HTTPS/WSS directement (app + VNC) avec un certificat auto-signé généré et géré par Bastion — voir la section "TLS sans reverse proxy" | (vide, HTTP) |
 | `BASTION_TLS_CERT` / `BASTION_TLS_KEY` | chemins vers un certificat déjà existant, prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux sont définis | (aucun) |
 
 ## Lancement
@@ -397,28 +320,15 @@ si vous voulez mémoriser des identifiants SSH) :
 
 ```yaml
 services:
-  # guacd: composant natif (embarque FreeRDP) qui parle RDP à la place de
-  # rdp_bridge.py — voir la section "Pont RDP" du README. Image officielle
-  # multi-arch, aucune dépendance C à compiler dans l'image bastion.
-  guacd:
-    image: guacamole/guacd:1.6.0
-    container_name: bastion-guacd
-    network_mode: host
-    restart: unless-stopped
-
   bastion:
     image: ghcr.io/nopalpite/bastion:latest   # ou un tag de version, ex: 1.2.0
     container_name: bastion
     # network_mode: host = pas de NAT, le conteneur voit exactement les
     # mêmes interfaces/routes que le host. Recommandé pour un bastion:
     # évite les surprises de routage vers les réseaux cibles, quelle que
-    # soit la topologie (mono ou multi-interfaces/VLAN). C'est aussi ce qui
-    # permet à rdp_bridge.py de joindre guacd sur 127.0.0.1:4822 sans
-    # réseau Docker dédié.
+    # soit la topologie (mono ou multi-interfaces/VLAN).
     network_mode: host
     restart: unless-stopped
-    depends_on:
-      - guacd
     environment:
       - BASTION_SECRET_KEY=change-moi-en-production
       - BASTION_ADMIN_USER=admin
@@ -433,16 +343,12 @@ services:
       # connecter sur ce chemin via le port 5000, que rien ne sait servir,
       # et la connexion échoue silencieusement.
       - BASTION_VNC_WS_PATH=
-      - BASTION_RDP_WS_PORT=6081
-      # Même principe que BASTION_VNC_WS_PATH ci-dessus, pour le RDP (même
-      # piège avec BASTION_TLS_SELFSIGNED/_CERT si non vide).
-      - BASTION_RDP_WS_PATH=
-      # Sans cette clé, la mémorisation des identifiants SSH/VNC/RDP est
+      # Sans cette clé, la mémorisation des identifiants SSH/VNC est
       # désactivée. Générer avec:
       # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - BASTION_CREDENTIALS_KEY=
-      # Optionnel: sert HTTPS/WSS directement (app, VNC, RDP) sans passer
-      # par un reverse proxy — voir la section "TLS sans reverse proxy" du
+      # Optionnel: sert HTTPS/WSS directement (app, VNC) sans passer par
+      # un reverse proxy — voir la section "TLS sans reverse proxy" du
       # README. Décommenter pour que Bastion génère et gère seul un
       # certificat auto-signé (stocké dans ./config/tls, persistant) :
       # - BASTION_TLS_SELFSIGNED=true
@@ -518,13 +424,6 @@ Sur Raspberry Pi, si la compilation Python est malgré tout nécessaire :
   `docker buildx build --platform linux/arm64 -t bastion .`, puis
   transférer l'image sur le Pi (`docker save`/`docker load`, ou via un
   registre).
-
-**`guacd` (pour le RDP) a aussi besoin d'ARM64** : les images officielles
-`guacamole/guacd` n'ont un tag arm64 qu'à partir de la **1.6.0** — plus
-ancien, seul l'amd64 était publié. C'est le tag utilisé par défaut dans
-`docker-compose.yml` ; ne redescendez pas en dessous sur une architecture
-ARM sous peine d'un échec de pull silencieusement retenté sur le mauvais
-layer, ou d'un `exec format error` au démarrage du conteneur.
 
 ## Navigateur de fichiers SFTP
 
@@ -647,10 +546,9 @@ une première connexion (TOFU) et enregistrera la nouvelle clé.
 
 Pas de reverse proxy ni de certificat officiel disponible (LAN isolé, accès
 via IP plutôt que nom de domaine...) mais besoin quand même de servir en
-HTTPS ? Bastion peut gérer lui-même un certificat TLS, sur ses trois
-serveurs réseau à la fois (l'appli Flask, `websockify` pour le VNC,
-`rdp_bridge.py` pour le RDP — voir `tls.py`), plutôt que de passer par la
-section suivante.
+HTTPS ? Bastion peut gérer lui-même un certificat TLS, sur ses deux
+serveurs réseau à la fois (l'appli Flask, `websockify` pour le VNC — voir
+`tls.py`), plutôt que de passer par la section suivante.
 
 Deux variables d'environnement, au choix :
 - **`BASTION_TLS_SELFSIGNED=true`** : Bastion génère seul un certificat
@@ -670,29 +568,28 @@ Deux variables d'environnement, au choix :
 
 Sans aucune des deux : HTTP en clair (comportement par défaut, inchangé).
 Une fois l'une des deux activée, tout se sert automatiquement en HTTPS/WSS
-sur les mêmes ports qu'aujourd'hui (5000, 6080, 6081) — `vnc.html`/`rdp.html`
-basculent déjà tout seuls en `wss://` dès que la page est chargée en HTTPS
-(voir plus bas), donc aucune autre configuration n'est nécessaire.
+sur les mêmes ports qu'aujourd'hui (5000, 6080) — `vnc.html` bascule déjà
+tout seul en `wss://` dès que la page est chargée en HTTPS (voir plus
+bas), donc aucune autre configuration n'est nécessaire.
 
-**Piège à éviter — ne définissez PAS `BASTION_VNC_WS_PATH`/`BASTION_RDP_WS_PATH`
-en même temps que `BASTION_TLS_SELFSIGNED`/`BASTION_TLS_CERT`** : ces deux
-variables de chemin existent pour la section suivante (reverse proxy), où
-c'est LUI qui fait suivre ce chemin vers le port du pont VNC/RDP. Sans
-reverse proxy, rien ne sait servir ce chemin — `vnc.html`/`rdp.html`
-tenteraient alors de se connecter en WebSocket sur
-`wss://<host>:5000/vnc-ws/` ou `/rdp-ws/`, une route que l'appli Flask ne
+**Piège à éviter — ne définissez PAS `BASTION_VNC_WS_PATH` en même temps
+que `BASTION_TLS_SELFSIGNED`/`BASTION_TLS_CERT`** : cette variable de
+chemin existe pour la section suivante (reverse proxy), où c'est LUI qui
+fait suivre ce chemin vers le port du pont VNC. Sans reverse proxy, rien
+ne sait servir ce chemin — `vnc.html` tenterait alors de se connecter en
+WebSocket sur `wss://<host>:5000/vnc-ws/`, une route que l'appli Flask ne
 connaît pas, et la connexion échouerait avec une erreur générique
-("Impossible de joindre le pont RDP/VNC") sans lien apparent avec la
-vraie cause. Avec `BASTION_TLS_SELFSIGNED`/`BASTION_TLS_CERT`, laissez ces
-deux variables **vides** : les ponts VNC/RDP parlent TLS eux-mêmes
-directement sur leurs ports (6080/6081), pas besoin de chemin.
+("Impossible de joindre le pont VNC") sans lien apparent avec la vraie
+cause. Avec `BASTION_TLS_SELFSIGNED`/`BASTION_TLS_CERT`, laissez cette
+variable **vide** : le pont VNC parle TLS lui-même directement sur son
+port (6080), pas besoin de chemin.
 
 ## Derrière un reverse proxy (TLS)
 
 Si vous avez déjà un reverse proxy avec un certificat officiel devant
 Bastion (nginx, Caddy, Traefik...), c'est lui qui doit terminer le TLS —
 inutile d'activer aussi `BASTION_TLS_SELFSIGNED` ci-dessus (les deux
-approches sont indépendantes et ne se combinent pas). Trois flux à faire
+approches sont indépendantes et ne se combinent pas). Deux flux à faire
 suivre :
 1. **L'appli Flask** (port 5000) : pages + Socket.IO (dashboard,
    terminal SSH, SFTP). Le client Socket.IO (`io()`) s'adapte tout seul
@@ -701,40 +598,33 @@ suivre :
 2. **websockify** (port 6080, VNC) : à faire suivre séparément, car ce
    n'est pas un flux Socket.IO mais un WebSocket brut vers un process à
    part.
-3. **rdp_bridge.py** (port 6081, RDP) : même chose que websockify pour le
-   VNC — un WebSocket brut vers un process séparé, mais **pas le même
-   process** (rdp_bridge.py ne passe pas par websockify, voir la section
-   "Pont RDP" ci-dessus).
 
-Pour les points 2 et 3, deux façons de faire, au choix indépendamment
-pour chacun — mais une seule fonctionne réellement une fois l'appli
-servie en HTTPS (le sujet même de cette section) :
+Pour le point 2, deux façons de faire — mais une seule fonctionne
+réellement une fois l'appli servie en HTTPS (le sujet même de cette
+section) :
 
-**Option A — exposer le port directement** (6080 et/ou 6081) : **ne
-fonctionne PAS si l'appli est servie en HTTPS, sauf à activer aussi le TLS
-de Bastion lui-même** (voir la section précédente, `BASTION_TLS_CERT`/
-`_KEY`/`_SELFSIGNED`) sur `websockify` et `rdp_bridge.py` — auquel cas
-autant s'en servir aussi pour l'appli et se passer entièrement du reverse
-proxy pour ces flux. Sans ça : `vnc.html`/`rdp.html` basculent bien
-automatiquement en `wss://<host>:<port>` dès que la page est chargée en
-HTTPS (le navigateur l'exige — contenu mixte sinon bloqué), mais si ni
-`websockify` ni `rdp_bridge.py` ne parlent TLS, la connexion `wss://`
+**Option A — exposer le port directement** (6080) : **ne fonctionne PAS
+si l'appli est servie en HTTPS, sauf à activer aussi le TLS de Bastion
+lui-même** (voir la section précédente, `BASTION_TLS_CERT`/`_KEY`/
+`_SELFSIGNED`) sur `websockify` — auquel cas autant s'en servir aussi pour
+l'appli et se passer entièrement du reverse proxy pour ce flux. Sans ça :
+`vnc.html` bascule bien automatiquement en `wss://<host>:6080` dès que la
+page est chargée en HTTPS (le navigateur l'exige — contenu mixte sinon
+bloqué), mais si `websockify` ne parle pas TLS, la connexion `wss://`
 échoue alors avant même d'atteindre le pont, sans quasiment aucune
-information exploitable côté navigateur (`Firefox ne peut établir de connexion avec le serveur`,
-`Connection closed` côté noVNC...). Cette option n'a donc de sens que si
-l'appli elle-même reste en HTTP (accès direct sur un LAN, sans reverse
-proxy TLS devant) — dans le contexte de cette section, ce n'est pas le
-cas : passez par l'option B.
+information exploitable côté navigateur (`Firefox ne peut établir de
+connexion avec le serveur`, `Connection closed` côté noVNC...). Cette
+option n'a donc de sens que si l'appli elle-même reste en HTTP (accès
+direct sur un LAN, sans reverse proxy TLS devant) — dans le contexte de
+cette section, ce n'est pas le cas : passez par l'option B.
 
 **Option B — router via un chemin sur le même port que l'appli**
 (la seule qui fonctionne une fois l'appli en HTTPS) : définissez
-`BASTION_VNC_WS_PATH` (ex: `/vnc-ws/`) et/ou `BASTION_RDP_WS_PATH`
-(ex: `/rdp-ws/`), et faites suivre ces chemins vers respectivement
-`127.0.0.1:6080` et `127.0.0.1:6081` dans le reverse proxy — c'est lui
-qui termine le TLS pour ces flux aussi, exactement comme pour l'appli
-Flask au point 1.
+`BASTION_VNC_WS_PATH` (ex: `/vnc-ws/`), et faites suivre ce chemin vers
+`127.0.0.1:6080` dans le reverse proxy — c'est lui qui termine le TLS
+pour ce flux aussi, exactement comme pour l'appli Flask au point 1.
 
-Exemple nginx (option B, VNC + RDP) :
+Exemple nginx (option B) :
 ```nginx
 server {
     listen 443 ssl;
@@ -756,13 +646,6 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
-
-    location /rdp-ws/ {
-        proxy_pass http://127.0.0.1:6081/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
 }
 ```
 
@@ -770,7 +653,6 @@ Exemple Caddy (option B, plus court) :
 ```
 bastion.example.com {
     reverse_proxy /vnc-ws/* 127.0.0.1:6080
-    reverse_proxy /rdp-ws/* 127.0.0.1:6081
     reverse_proxy 127.0.0.1:5000
 }
 ```
@@ -785,10 +667,6 @@ bastion.example.com {
   saisis à chaque connexion et jamais stockés côté serveur — sauf pour un
   serveur VNC chiffré (VeNCrypt/TLS), où ils sont nécessairement requis
   (voir le pont VNC générique).
-- **Identifiants RDP** : contrairement au SSH/VNC, **toujours** mémorisés
-  chiffrés (nécessaire — l'authentification RDP a lieu côté serveur, pas
-  de saisie interactive possible, voir la section "Pont RDP"). Le mot de
-  passe déchiffré ne transite jamais vers le navigateur.
 - **HTTPS/WSS** : mettez un reverse proxy (nginx/Traefik) devant l'app en
   TLS (voir section dédiée).
 - **Traçabilité** : envisager de journaliser les ouvertures de session

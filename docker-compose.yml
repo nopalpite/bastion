@@ -1,18 +1,4 @@
 services:
-  guacd:
-    # Composant natif du projet Apache Guacamole (embarque FreeRDP) qui
-    # sait réellement parler RDP — image officielle, aucune dépendance
-    # lourde à compiler dans l'image de bastion. Voir rdp_bridge.py et la
-    # section RDP du README pour l'architecture complète (bastion ne parle
-    # que le protocole Guacamole, texte, à guacd — pas RDP directement).
-    image: guacamole/guacd:1.6.0
-    container_name: bastion-guacd
-    # network_mode: host, comme bastion ci-dessous: rdp_bridge.py joint
-    # guacd sur 127.0.0.1:4822, il faut donc qu'ils partagent le même
-    # réseau plutôt que de passer par un nom de service Docker.
-    network_mode: host
-    restart: unless-stopped
-
   bastion:
     build: .
     container_name: bastion
@@ -22,8 +8,6 @@ services:
     # soit la topologie (mono ou multi-interfaces/VLAN).
     network_mode: host
     restart: unless-stopped
-    depends_on:
-      - guacd
     environment:
       - BASTION_SECRET_KEY=change-moi-en-production
       - BASTION_ADMIN_USER=admin
@@ -38,16 +22,12 @@ services:
       # connecter sur ce chemin via le port 5000, que rien ne sait servir,
       # et la connexion échoue silencieusement.
       - BASTION_VNC_WS_PATH=
-      - BASTION_RDP_WS_PORT=6081
-      # Même principe que BASTION_VNC_WS_PATH ci-dessus, pour le RDP (même
-      # piège avec BASTION_TLS_SELFSIGNED/_CERT si non vide).
-      - BASTION_RDP_WS_PATH=
-      # Sans cette clé, la mémorisation des identifiants SSH/VNC/RDP est
+      # Sans cette clé, la mémorisation des identifiants SSH/VNC est
       # désactivée. Générer avec:
       # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - BASTION_CREDENTIALS_KEY=
-      # Optionnel: sert HTTPS/WSS directement (app, VNC, RDP) sans passer
-      # par un reverse proxy — voir la section TLS du README. Décommenter
+      # Optionnel: sert HTTPS/WSS directement (app, VNC) sans passer par
+      # un reverse proxy — voir la section TLS du README. Décommenter
       # pour que Bastion génère et gère seul un certificat auto-signé
       # (stocké dans ./config/tls, persistant) :
       # - BASTION_TLS_SELFSIGNED=true

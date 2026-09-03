@@ -1,8 +1,8 @@
 """Diagnostic RFB minimal: se connecte à un serveur VNC, fait la
 négociation de version, et affiche la liste EXACTE des types de sécurité
-proposés par le serveur — sans dépendre de guacd, libvncclient, ou quoi
-que ce soit d'autre. Juste le protocole RFB brut (RFC 6143), pour savoir
-avec certitude ce que le serveur annonce plutôt que de deviner.
+proposés par le serveur — sans dépendre de libvncclient ou de quoi que ce
+soit d'autre. Juste le protocole RFB brut (RFC 6143), pour savoir avec
+certitude ce que le serveur annonce plutôt que de deviner.
 
 Usage:
     python3 debug_vnc_security.py <host> <port>

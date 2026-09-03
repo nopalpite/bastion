@@ -6,13 +6,11 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "BLE", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
-# app.py et rdp_bridge.py font volontairement
-# "import eventlet; eventlet.monkey_patch()" avant tout le reste (voir le
-# commentaire en tête de chaque fichier) — ni le tri des imports (I001) ni
-# "import pas en haut du fichier" (E402) ne doivent s'appliquer ici, ça
-# casserait cet ordre requis.
+# app.py fait volontairement "import eventlet; eventlet.monkey_patch()"
+# avant tout le reste (voir le commentaire en tête du fichier) — ni le tri
+# des imports (I001) ni "import pas en haut du fichier" (E402) ne doivent
+# s'appliquer ici, ça casserait cet ordre requis.
 "app.py" = ["E402", "I001"]
-"rdp_bridge.py" = ["E402", "I001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
