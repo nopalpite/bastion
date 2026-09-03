@@ -425,12 +425,17 @@ services:
       - BASTION_ADMIN_PASSWORD=change-moi
       - BASTION_VNC_WS_PORT=6080
       # Vide par défaut (connexion VNC directe sur le port ci-dessus).
-      # À définir (ex: /vnc-ws/) si vous passez par un reverse proxy TLS
-      # qui fait suivre ce chemin vers 127.0.0.1:6080 — voir la section
-      # "Derrière un reverse proxy (TLS)" du README.
+      # À définir (ex: /vnc-ws/) UNIQUEMENT si vous passez par un reverse
+      # proxy TLS qui fait suivre ce chemin vers 127.0.0.1:6080 — voir la
+      # section "Derrière un reverse proxy (TLS)" du README. Piège: si vous
+      # utilisez BASTION_TLS_SELFSIGNED/_CERT ci-dessous (pas de reverse
+      # proxy), laissez cette variable VIDE — sinon vnc.html tente de se
+      # connecter sur ce chemin via le port 5000, que rien ne sait servir,
+      # et la connexion échoue silencieusement.
       - BASTION_VNC_WS_PATH=
       - BASTION_RDP_WS_PORT=6081
-      # Même principe que BASTION_VNC_WS_PATH ci-dessus, pour le RDP.
+      # Même principe que BASTION_VNC_WS_PATH ci-dessus, pour le RDP (même
+      # piège avec BASTION_TLS_SELFSIGNED/_CERT si non vide).
       - BASTION_RDP_WS_PATH=
       # Sans cette clé, la mémorisation des identifiants SSH/VNC/RDP est
       # désactivée. Générer avec:
@@ -668,6 +673,19 @@ Une fois l'une des deux activée, tout se sert automatiquement en HTTPS/WSS
 sur les mêmes ports qu'aujourd'hui (5000, 6080, 6081) — `vnc.html`/`rdp.html`
 basculent déjà tout seuls en `wss://` dès que la page est chargée en HTTPS
 (voir plus bas), donc aucune autre configuration n'est nécessaire.
+
+**Piège à éviter — ne définissez PAS `BASTION_VNC_WS_PATH`/`BASTION_RDP_WS_PATH`
+en même temps que `BASTION_TLS_SELFSIGNED`/`BASTION_TLS_CERT`** : ces deux
+variables de chemin existent pour la section suivante (reverse proxy), où
+c'est LUI qui fait suivre ce chemin vers le port du pont VNC/RDP. Sans
+reverse proxy, rien ne sait servir ce chemin — `vnc.html`/`rdp.html`
+tenteraient alors de se connecter en WebSocket sur
+`wss://<host>:5000/vnc-ws/` ou `/rdp-ws/`, une route que l'appli Flask ne
+connaît pas, et la connexion échouerait avec une erreur générique
+("Impossible de joindre le pont RDP/VNC") sans lien apparent avec la
+vraie cause. Avec `BASTION_TLS_SELFSIGNED`/`BASTION_TLS_CERT`, laissez ces
+deux variables **vides** : les ponts VNC/RDP parlent TLS eux-mêmes
+directement sur leurs ports (6080/6081), pas besoin de chemin.
 
 ## Derrière un reverse proxy (TLS)
 

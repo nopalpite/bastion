@@ -30,12 +30,17 @@ services:
       - BASTION_ADMIN_PASSWORD=change-moi
       - BASTION_VNC_WS_PORT=6080
       # Vide par défaut (connexion VNC directe sur le port ci-dessus).
-      # À définir (ex: /vnc-ws/) si vous passez par un reverse proxy TLS
-      # qui fait suivre ce chemin vers 127.0.0.1:6080 — voir la section
-      # "Derrière un reverse proxy (TLS)" du README.
+      # À définir (ex: /vnc-ws/) UNIQUEMENT si vous passez par un reverse
+      # proxy TLS qui fait suivre ce chemin vers 127.0.0.1:6080 — voir la
+      # section "Derrière un reverse proxy (TLS)" du README. Piège: si vous
+      # utilisez BASTION_TLS_SELFSIGNED/_CERT ci-dessous (pas de reverse
+      # proxy), laissez cette variable VIDE — sinon vnc.html tente de se
+      # connecter sur ce chemin via le port 5000, que rien ne sait servir,
+      # et la connexion échoue silencieusement.
       - BASTION_VNC_WS_PATH=
       - BASTION_RDP_WS_PORT=6081
-      # Même principe que BASTION_VNC_WS_PATH ci-dessus, pour le RDP.
+      # Même principe que BASTION_VNC_WS_PATH ci-dessus, pour le RDP (même
+      # piège avec BASTION_TLS_SELFSIGNED/_CERT si non vide).
       - BASTION_RDP_WS_PATH=
       # Sans cette clé, la mémorisation des identifiants SSH/VNC/RDP est
       # désactivée. Générer avec:
