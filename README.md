@@ -377,6 +377,8 @@ Variables d'environnement utiles :
 | `BASTION_RDP_WS_PATH` | si définie (ex: `/rdp-ws/`), route le RDP via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
 | `BASTION_CREDENTIALS_KEY` | clé de chiffrement des identifiants SSH mémorisés. Sans elle, la mémorisation est désactivée. Générer avec `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | (aucune) |
 | `BASTION_DATA_DIR` | dossier contenant `machines.yaml`. L'image Docker la définit à `/app/config` (voir la section Docker) ; sans intérêt à changer hors Docker | dossier de l'appli |
+| `BASTION_TLS_SELFSIGNED` | si `true`, sert HTTPS/WSS directement (app + VNC + RDP) avec un certificat auto-signé généré et géré par Bastion — voir la section "TLS sans reverse proxy" | (vide, HTTP) |
+| `BASTION_TLS_CERT` / `BASTION_TLS_KEY` | chemins vers un certificat déjà existant, prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux sont définis | (aucun) |
 
 ## Lancement
 
@@ -434,10 +436,17 @@ services:
       # désactivée. Générer avec:
       # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - BASTION_CREDENTIALS_KEY=
+      # Optionnel: sert HTTPS/WSS directement (app, VNC, RDP) sans passer
+      # par un reverse proxy — voir la section "TLS sans reverse proxy" du
+      # README. Décommenter pour que Bastion génère et gère seul un
+      # certificat auto-signé (stocké dans ./config/tls, persistant) :
+      # - BASTION_TLS_SELFSIGNED=true
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement — voir la note
-      # ci-dessous.
+      # ci-dessous. C'est aussi là qu'un certificat TLS auto-signé
+      # (BASTION_TLS_SELFSIGNED ci-dessus) est stocké, pour persister au
+      # rebuild.
       - ./config:/app/config
       # Persister les plans de salle uploadés (sinon perdus au rebuild)
       - ./data/maps:/app/static/uploads/maps
