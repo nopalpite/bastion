@@ -10,6 +10,7 @@ import time
 import pytest
 
 import app as app_module
+import discovery
 import history
 import store
 
@@ -59,6 +60,18 @@ def test_new_host_creates_machine(client):
     machine = store.get_machine("serveur-test")
     assert machine is not None
     assert machine["host"] == "10.0.0.1"
+
+
+def test_new_host_get_prefills_from_query_params(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.get("/hosts/new?host=10.0.0.9&name=srv-discovered&ssh_port=22&vnc_port=5901")
+
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert 'value="10.0.0.9"' in body
+    assert 'value="srv-discovered"' in body
+    assert 'value="5901"' in body
 
 
 def test_new_host_rejects_missing_required_fields(client):
@@ -154,3 +167,65 @@ def test_api_history_returns_timeline_json(client):
     assert resp.status_code == 200
     assert resp.json["timeline"][-1] == 100.0
     assert resp.json["latency"][-1] == 5.0
+
+
+# --- /discover: découverte réseau (voir discovery.py) -------------------
+
+def test_discover_page_requires_login(client):
+    resp = client.get("/discover")
+    assert resp.status_code == 302
+
+
+def test_discover_get_shows_form_without_scanning(client, monkeypatch):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    called = []
+    monkeypatch.setattr(discovery, "run_discovery", lambda cidr: called.append(cidr) or [])
+
+    resp = client.get("/discover")
+
+    assert resp.status_code == 200
+    assert called == []  # une visite GET ne doit jamais déclencher de scan
+
+
+def test_discover_post_shows_results(client, monkeypatch):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    monkeypatch.setattr(
+        discovery, "run_discovery",
+        lambda cidr: [{"ip": "10.0.0.5", "hostname": "srv.local", "ssh": True, "vnc_port": None}],
+    )
+
+    resp = client.post("/discover", data={"cidr": "10.0.0.0/29"})
+
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "10.0.0.5" in body
+    assert "srv.local" in body
+
+
+def test_discover_post_shows_error_on_invalid_range(client, monkeypatch):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    def boom(cidr):
+        raise discovery.DiscoveryError("Plage trop grande")
+
+    monkeypatch.setattr(discovery, "run_discovery", boom)
+
+    resp = client.post("/discover", data={"cidr": "10.0.0.0/8"})
+
+    assert resp.status_code == 200
+    assert "Plage trop grande" in resp.get_data(as_text=True)
+
+
+def test_discover_marks_already_inventoried_hosts(client, monkeypatch):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.5", "ssh_port": "22",
+    })
+    monkeypatch.setattr(
+        discovery, "run_discovery",
+        lambda cidr: [{"ip": "10.0.0.5", "hostname": None, "ssh": True, "vnc_port": None}],
+    )
+
+    resp = client.post("/discover", data={"cidr": "10.0.0.0/29"})
+
+    assert "Déjà dans l'inventaire" in resp.get_data(as_text=True)

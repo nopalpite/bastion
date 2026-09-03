@@ -1122,3 +1122,34 @@ body.modal-open {
   white-space: nowrap;
 }
 
+/* page /discover (découverte réseau, voir discovery.py) --------------- */
+
+.mono { font-family: var(--font-mono); font-size: 13px; }
+
+.discovery-table {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.discovery-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 70px 70px 120px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.discovery-row:last-child { border-bottom: none; }
+.discovery-head {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  background: var(--bg-raised);
+}
+@media (max-width: 640px) {
+  .discovery-row { grid-template-columns: 1fr; row-gap: 4px; }
+  .discovery-head { display: none; }
+}
+

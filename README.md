@@ -21,6 +21,7 @@ dépendance lourde. Facile à lire, facile à étendre.
 
 - **Dashboard de monitoring** : statut ping (vivant/injoignable) de chaque machine, plus un badge SSH indiquant si le port répond — groupées par salle.
 - **Ajout d'hôtes et de salles depuis l'interface** (`+ Hôte` / `+ Salle`), en plus de l'édition directe de `machines.yaml`. Édition et suppression possibles ensuite.
+- **Découverte réseau** (`/discover`) : trouve les machines déjà présentes sur une plage IP (ping + SSH/VNC) pour les ajouter en un clic, sans scan de port étendu — voir la section dédiée plus bas.
 - **Plan interactif par salle** (`/map/<salle>`) : importez une image de plan (n'importe quelle résolution/ratio, voir plus bas), placez les machines dessus par glisser-déposer (souris et tactile), cliquez sur une machine pour ouvrir un accès rapide SSH/VNC ou déclencher un reboot/shutdown.
 - **Terminal SSH** dans le navigateur, avec navigateur de fichiers SFTP dans une colonne latérale (façon MobaXterm).
 - **VNC** dans le navigateur via noVNC, y compris les serveurs chiffrés (VeNCrypt/TLS, RealVNC...) — voir le pont VNC générique ci-dessous.
@@ -55,6 +56,40 @@ chargée — inoffensif pour les autres formats, où il ne fait que
 reconfirmer les mêmes valeurs).
 
 Un plan sans image (fond neutre) utilise un ratio 16/9 par défaut.
+
+## Découverte réseau (`/discover`, `discovery.py`)
+
+Ajouter des machines une par une devient vite répétitif quand un parc
+entier vient d'être installé sur le même réseau. Cette page scanne une
+plage IP et propose d'ajouter directement les machines trouvées.
+
+Conçue pour rester **discrète côté réseau**, à la suite d'un incident
+réel documenté dans ce projet (voir la section Monitoring plus bas) :
+- **Juste un ping** par adresse (même mécanisme que le badge de statut du
+  dashboard, `monitor.ping_host` — rien de nouveau niveau intrusivité).
+- **3 ports vérifiés, jamais plus** : SSH (22), VNC (5900, 5901) — via
+  `check_port`/`vnc_tls_bridge.probe_available`, déjà utilisés ailleurs
+  dans le projet et déjà confirmés sans risque de blacklist. **Aucun scan
+  de plage de ports.**
+- **Plage bornée à 254 adresses (un `/24`)** — refusée au-delà plutôt que
+  de laisser scanner un `/16` par erreur ; scannez par morceaux si votre
+  réseau est plus grand.
+- **Concurrence bornée** (`eventlet.GreenPool`, 32 sondes en parallèle
+  maximum) plutôt que de lancer les 254 adresses d'un coup.
+- **Déclenchement manuel uniquement** — jamais automatique ni planifié,
+  contrairement à la boucle de monitoring habituelle.
+
+Le champ de plage IP est pré-rempli avec le `/24` de l'IP locale
+principale de l'hôte (deviné via une résolution de route, aucun paquet
+envoyé — voir `discovery.guess_local_cidr`) : avec `network_mode: host`,
+c'est la vraie IP de la machine physique qui héberge les conteneurs, pas
+une IP de conteneur isolée. C'est un point de départ à corriger à la main
+si le découpage réel du réseau diffère, pas une détection garantie exacte.
+
+Chaque machine trouvée est proposée avec un bouton **+ Ajouter** qui
+préremplit le formulaire d'hôte (adresse, nom d'hôte si résolu en DNS
+inverse, ports détectés) — sauf si son adresse est déjà dans l'inventaire,
+auquel cas c'est indiqué à la place.
 
 ## Pont VNC générique (`vnc_tls_bridge.py`)
 
@@ -145,6 +180,7 @@ bastion/
   map_image.py            validation + lecture du ratio des images de plan (voir plus haut)
   monitor.py             thread de fond: ping + test de port SSH
   history.py               historique de disponibilité (SQLite, page /stats)
+  discovery.py             découverte réseau bornée (page /discover)
   ssh_ws.py               pont Socket.IO <-> Paramiko pour le terminal
   ssh_client.py            connexion SSH avec épinglage de la clé d'hôte (TOFU)
   sftp_ws.py               navigateur de fichiers (colonne latérale du terminal)
@@ -153,7 +189,7 @@ bastion/
   vnc_tls_bridge.py        pont VNC générique (relais transparent, ou VeNCrypt/TLS si besoin)
   debug_vnc_security.py    diagnostic RFB autonome (types de sécurité VNC)
   machines.yaml           inventaire: salles + machines
-  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc, stats)
+  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc, stats, discover)
   static/css/            style.css (thème console sombre)
   static/js/              dashboard.js, terminal.js, sftp.js, map.js, actions.js, stats.js
   static/uploads/maps/    images de plan uploadées

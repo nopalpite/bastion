@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Découverte réseau — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Découverte réseau</div>
+</div>
+
+<p class="hint-box">
+  Ping puis vérification SSH/VNC (ports 22, 5900, 5901 uniquement — jamais
+  de scan de plage de ports ni de tentative d'authentification) sur la
+  plage indiquée, <strong>254 adresses maximum</strong> (un /24). Lancé
+  uniquement à la demande, jamais en arrière-plan.
+</p>
+
+{% if error %}
+<div class="error-msg">{{ error }}</div>
+{% endif %}
+
+<form method="post" class="inline-form" id="discover-form">
+  <div class="field">
+    <label for="cidr">Plage IP (CIDR)</label>
+    <input type="text" id="cidr" name="cidr" value="{{ cidr or default_cidr or '' }}"
+           placeholder="192.168.1.0/24" required>
+  </div>
+  <button class="btn primary" type="submit" id="discover-btn">Scanner</button>
+</form>
+
+{% if results is not none %}
+<div class="section-sep">
+  Résultats — {{ results|length }} machine{{ 's' if results|length != 1 else '' }} trouvée{{ 's' if results|length != 1 else '' }}
+</div>
+
+{% if not results %}
+<p class="hint-box">Aucune machine n'a répondu sur cette plage.</p>
+{% else %}
+<div class="discovery-table">
+  <div class="discovery-row discovery-head">
+    <span>IP</span>
+    <span>Nom d'hôte</span>
+    <span>SSH</span>
+    <span>VNC</span>
+    <span></span>
+  </div>
+  {% for host in results %}
+  <div class="discovery-row">
+    <span class="mono">{{ host.ip }}</span>
+    <span>{{ host.hostname or "—" }}</span>
+    <span class="svc-badge {{ 'ok' if host.ssh else 'ko' }}">SSH</span>
+    <span class="svc-badge {{ 'ok' if host.vnc_port else 'ko' }}">VNC</span>
+    <span>
+      {% if host.ip in existing_hosts %}
+      <span class="text-dim">Déjà dans l'inventaire</span>
+      {% else %}
+      <a class="btn small" href="{{ url_for('new_host', host=host.ip, name=host.hostname or host.ip, ssh_port=22 if host.ssh else '', vnc_port=host.vnc_port or '') }}">+ Ajouter</a>
+      {% endif %}
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+  document.getElementById("discover-form").addEventListener("submit", () => {
+    const btn = document.getElementById("discover-btn");
+    btn.disabled = true;
+    btn.textContent = "Scan en cours…";
+  });
+</script>
+{% endblock %}

@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 import config
 import store
 import credentials
+import discovery
 import history
 import tls
 from map_image import DEFAULT_MAP_RATIO, get_image_size, validate_map_image
@@ -225,6 +226,30 @@ def api_history(machine_id):
     })
 
 
+# --- Découverte réseau (page /discover, voir discovery.py) -------------
+
+@app.route("/discover", methods=["GET", "POST"])
+@login_required
+def discover():
+    cidr = request.form.get("cidr") if request.method == "POST" else None
+    results = None
+    error = None
+
+    if request.method == "POST":
+        try:
+            results = discovery.run_discovery(cidr)
+        except discovery.DiscoveryError as exc:
+            error = str(exc)
+
+    existing_hosts = {m["host"] for m in store.load_machines()}
+    return render_template(
+        "discover.html",
+        cidr=cidr, results=results, error=error,
+        default_cidr=discovery.guess_local_cidr(),
+        existing_hosts=existing_hosts,
+    )
+
+
 # --- Gestion de l'inventaire: ajout d'hôte / salle ---------------------
 
 @app.route("/hosts/new", methods=["GET", "POST"])
@@ -262,8 +287,18 @@ def new_host():
         )
         return redirect(url_for("dashboard"))
 
+    # Préremplissage depuis la page /discover (lien "+ Ajouter" d'une
+    # ligne de résultat) — un dict séparé de `machine` plutôt que de
+    # réutiliser cette variable, qui déclenche par ailleurs des blocs du
+    # template réservés à l'édition (bouton supprimer, etc.).
+    prefill = {
+        key: request.args[key]
+        for key in ("host", "name", "ssh_port", "vnc_port")
+        if request.args.get(key)
+    } or None
+
     return render_template(
-        "host_form.html", rooms=rooms, error=None,
+        "host_form.html", rooms=rooms, error=None, prefill=prefill,
         credentials_enabled=credentials.credentials_enabled(),
     )
 

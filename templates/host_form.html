@@ -10,7 +10,7 @@
   <div class="form-grid">
     <div class="field">
       <label for="name">Nom</label>
-      <input type="text" id="name" name="name" value="{{ machine.name if machine else '' }}" placeholder="Serveur Web Linux" required autofocus>
+      <input type="text" id="name" name="name" value="{{ machine.name if machine else (prefill.name if prefill else '') }}" placeholder="Serveur Web Linux" required autofocus>
     </div>
 
     <div class="field">
@@ -23,17 +23,17 @@
 
     <div class="field">
       <label for="host">Adresse / hostname</label>
-      <input type="text" id="host" name="host" value="{{ machine.host if machine else '' }}" placeholder="192.168.1.10" required>
+      <input type="text" id="host" name="host" value="{{ machine.host if machine else (prefill.host if prefill else '') }}" placeholder="192.168.1.10" required>
     </div>
 
     <div class="field">
       <label for="ssh_port">Port SSH</label>
-      <input type="number" id="ssh_port" name="ssh_port" value="{{ machine.ssh_port if machine else 22 }}">
+      <input type="number" id="ssh_port" name="ssh_port" value="{{ machine.ssh_port if machine else (prefill.ssh_port if prefill else 22) }}">
     </div>
 
     <div class="field">
       <label for="vnc_port">Port VNC (optionnel)</label>
-      <input type="number" id="vnc_port" name="vnc_port" value="{{ machine.vnc_port if machine else '' }}" placeholder="5900">
+      <input type="number" id="vnc_port" name="vnc_port" value="{{ machine.vnc_port if machine else (prefill.vnc_port if prefill else '') }}" placeholder="5900">
     </div>
 
     <div class="field">
