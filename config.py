@@ -53,3 +53,16 @@ VNC_WS_PATH = os.environ.get("BASTION_VNC_WS_PATH", "").strip()
 # ci-dessus si RDP_WS_PATH est définie.
 RDP_WS_PORT = int(os.environ.get("BASTION_RDP_WS_PORT", "6081"))
 RDP_WS_PATH = os.environ.get("BASTION_RDP_WS_PATH", "").strip()
+
+# TLS optionnel pour servir HTTPS/WSS directement (sans reverse proxy) sur
+# les trois serveurs réseau du projet (app.py, websockify, rdp_bridge.py) —
+# voir tls.py et la section TLS du README. BASTION_TLS_CERT/_KEY: chemin
+# vers un certificat déjà existant. BASTION_TLS_SELFSIGNED: si "true" et
+# qu'aucun des deux ci-dessus n'est fourni, Bastion génère et gère seul un
+# certificat auto-signé. Aucun des deux définis: HTTP en clair (défaut,
+# comportement historique inchangé).
+TLS_CERT = os.environ.get("BASTION_TLS_CERT", "").strip()
+TLS_KEY = os.environ.get("BASTION_TLS_KEY", "").strip()
+TLS_SELFSIGNED = os.environ.get("BASTION_TLS_SELFSIGNED", "").strip().lower() in (
+    "1", "true", "yes",
+)

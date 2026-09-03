@@ -629,10 +629,44 @@ pouvez aussi supprimer le champ `host_key` de la machine dans
 `machines.yaml` à la main : la prochaine connexion se comportera comme
 une première connexion (TOFU) et enregistrera la nouvelle clé.
 
+## TLS sans reverse proxy (certificat auto-signé)
+
+Pas de reverse proxy ni de certificat officiel disponible (LAN isolé, accès
+via IP plutôt que nom de domaine...) mais besoin quand même de servir en
+HTTPS ? Bastion peut gérer lui-même un certificat TLS, sur ses trois
+serveurs réseau à la fois (l'appli Flask, `websockify` pour le VNC,
+`rdp_bridge.py` pour le RDP — voir `tls.py`), plutôt que de passer par la
+section suivante.
+
+Deux variables d'environnement, au choix :
+- **`BASTION_TLS_SELFSIGNED=true`** : Bastion génère seul un certificat
+  auto-signé au premier démarrage (stocké dans `<BASTION_DATA_DIR>/tls/`,
+  donc persistant si ce dossier est monté en volume — voir
+  `docker-compose.yml`) et le réutilise ensuite sans le régénérer (une
+  nouvelle paire à chaque démarrage changerait son empreinte à chaque
+  fois, et redéclencherait l'avertissement de sécurité du navigateur).
+  Le certificat n'étant signé par aucune autorité reconnue, le navigateur
+  affichera un avertissement à la première visite (normal, à accepter
+  manuellement) — c'est la contrepartie de ne pas dépendre d'une autorité
+  de certification externe.
+- **`BASTION_TLS_CERT` / `BASTION_TLS_KEY`** : chemins vers un certificat
+  déjà existant (auto-signé fait main, ou même un vrai certificat déjà en
+  votre possession) — prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux
+  sont définis.
+
+Sans aucune des deux : HTTP en clair (comportement par défaut, inchangé).
+Une fois l'une des deux activée, tout se sert automatiquement en HTTPS/WSS
+sur les mêmes ports qu'aujourd'hui (5000, 6080, 6081) — `vnc.html`/`rdp.html`
+basculent déjà tout seuls en `wss://` dès que la page est chargée en HTTPS
+(voir plus bas), donc aucune autre configuration n'est nécessaire.
+
 ## Derrière un reverse proxy (TLS)
 
-L'appli elle-même ne fait pas de TLS — c'est le rôle d'un reverse proxy
-devant elle (nginx, Caddy, Traefik...). Trois flux à faire suivre :
+Si vous avez déjà un reverse proxy avec un certificat officiel devant
+Bastion (nginx, Caddy, Traefik...), c'est lui qui doit terminer le TLS —
+inutile d'activer aussi `BASTION_TLS_SELFSIGNED` ci-dessus (les deux
+approches sont indépendantes et ne se combinent pas). Trois flux à faire
+suivre :
 1. **L'appli Flask** (port 5000) : pages + Socket.IO (dashboard,
    terminal SSH, SFTP). Le client Socket.IO (`io()`) s'adapte tout seul
    au protocole de la page (`wss://` si servi en HTTPS), rien à
@@ -650,14 +684,16 @@ pour chacun — mais une seule fonctionne réellement une fois l'appli
 servie en HTTPS (le sujet même de cette section) :
 
 **Option A — exposer le port directement** (6080 et/ou 6081) : **ne
-fonctionne PAS si l'appli est servie en HTTPS.** `vnc.html`/`rdp.html`
-basculent bien automatiquement en `wss://<host>:<port>` dès que la page
-est chargée en HTTPS (le navigateur l'exige — contenu mixte sinon
-bloqué), mais **ni `websockify` ni `rdp_bridge.py` ne savent parler TLS
-eux-mêmes** (aucun `--cert`/`--key` configuré pour l'un, aucun support
-TLS écrit pour l'autre) : la connexion `wss://` échoue alors avant même
-d'atteindre le pont, sans quasiment aucune information exploitable côté
-navigateur (`Firefox ne peut établir de connexion avec le serveur`,
+fonctionne PAS si l'appli est servie en HTTPS, sauf à activer aussi le TLS
+de Bastion lui-même** (voir la section précédente, `BASTION_TLS_CERT`/
+`_KEY`/`_SELFSIGNED`) sur `websockify` et `rdp_bridge.py` — auquel cas
+autant s'en servir aussi pour l'appli et se passer entièrement du reverse
+proxy pour ces flux. Sans ça : `vnc.html`/`rdp.html` basculent bien
+automatiquement en `wss://<host>:<port>` dès que la page est chargée en
+HTTPS (le navigateur l'exige — contenu mixte sinon bloqué), mais si ni
+`websockify` ni `rdp_bridge.py` ne parlent TLS, la connexion `wss://`
+échoue alors avant même d'atteindre le pont, sans quasiment aucune
+information exploitable côté navigateur (`Firefox ne peut établir de connexion avec le serveur`,
 `Connection closed` côté noVNC...). Cette option n'a donc de sens que si
 l'appli elle-même reste en HTTP (accès direct sur un LAN, sans reverse
 proxy TLS devant) — dans le contexte de cette section, ce n'est pas le

@@ -67,6 +67,7 @@ from eventlet.websocket import WebSocketWSGI
 import config
 import rdp_protocol
 import store
+import tls
 from rdp_protocol import GuacamoleError
 
 RECV_CHUNK = rdp_protocol.RECV_CHUNK
@@ -149,8 +150,17 @@ def _handle_ws(ws):
 def main():
     handler = WebSocketWSGI.configured(_handle_ws, supported_protocols=["guacamole"])
     listener = eventlet.listen(("0.0.0.0", config.RDP_WS_PORT))
+    cert_path, key_path = tls.resolve_cert_paths()
+    if cert_path:
+        # Même certificat que les deux autres serveurs réseau du projet
+        # (voir tls.py) — sinon la page pourrait passer en HTTPS pendant
+        # que ce pont resterait en clair, et le navigateur bloquerait la
+        # connexion WebSocket en contenu mixte.
+        listener = eventlet.wrap_ssl(
+            listener, certfile=cert_path, keyfile=key_path, server_side=True,
+        )
     print(f"[rdp_bridge] écoute sur 0.0.0.0:{config.RDP_WS_PORT} "
-          "(WebSocket, sous-protocole 'guacamole')")
+          f"(WebSocket{'S' if cert_path else ''}, sous-protocole 'guacamole')")
     eventlet.wsgi.server(listener, handler, log_output=False)
 
 

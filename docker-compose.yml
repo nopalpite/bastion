@@ -41,11 +41,18 @@ services:
       # désactivée. Générer avec:
       # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - BASTION_CREDENTIALS_KEY=
+      # Optionnel: sert HTTPS/WSS directement (app, VNC, RDP) sans passer
+      # par un reverse proxy — voir la section TLS du README. Décommenter
+      # pour que Bastion génère et gère seul un certificat auto-signé
+      # (stocké dans ./config/tls, persistant) :
+      # - BASTION_TLS_SELFSIGNED=true
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement: voir BASTION_DATA_DIR
       # dans config.py — évite un piège Docker si ./config n'existe pas
-      # encore côté hôte (amorcé automatiquement au 1er démarrage).
+      # encore côté hôte (amorcé automatiquement au 1er démarrage). C'est
+      # aussi là qu'un certificat TLS auto-signé (BASTION_TLS_SELFSIGNED
+      # ci-dessus) est stocké, pour persister au rebuild.
       - ./config:/app/config
       # Persister les plans de salle uploadés (sinon perdus au rebuild)
       - ./data/maps:/app/static/uploads/maps

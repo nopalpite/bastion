@@ -16,4 +16,12 @@ fi
 # monté (voir docker-compose.yml).
 python gen_vnc_tokens.py > /app/vnc_tokens.conf
 
+# Génère le certificat auto-signé (si BASTION_TLS_SELFSIGNED est activé)
+# une seule fois ici, AVANT de démarrer les trois serveurs réseau: ils
+# tournent en parallèle sous supervisord, chacun appelle aussi
+# tls.resolve_cert_paths() de son côté, et une génération concurrente
+# entre plusieurs process pourrait faire lire à l'un d'eux une paire
+# clé/certificat incomplète (écrite par un autre au même instant).
+python -c "import tls; tls.resolve_cert_paths()"
+
 exec supervisord -c /etc/supervisor/conf.d/bastion.conf

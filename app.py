@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 import config
 import store
 import credentials
+import tls
 from map_image import DEFAULT_MAP_RATIO, get_image_size, validate_map_image
 from monitor import start_background_monitor, get_status_snapshot
 from ssh_ws import register_ssh_handlers, sessions as ssh_sessions
@@ -449,4 +450,13 @@ if __name__ == "__main__":
     # sous-processus, ce qui pose problème avec eventlet sur Windows
     # (le port reste "already in use"). On garde debug=True pour les
     # messages d'erreur détaillés, sans le reloader.
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+    run_kwargs = {"host": "0.0.0.0", "port": 5000, "debug": True, "use_reloader": False}
+    cert_path, key_path = tls.resolve_cert_paths()
+    if cert_path:
+        # Flask-SocketIO (mode eventlet) accepte directement certfile/keyfile
+        # et enveloppe le socket d'écoute avec eventlet.wrap_ssl() — voir
+        # tls.py pour la cohérence avec les deux autres serveurs réseau
+        # (websockify, rdp_bridge.py).
+        run_kwargs["certfile"] = cert_path
+        run_kwargs["keyfile"] = key_path
+    socketio.run(app, **run_kwargs)

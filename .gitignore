@@ -21,6 +21,12 @@ static/uploads/maps/*
 /config/
 /data/
 
+# Certificat TLS auto-signé généré localement (voir tls.py,
+# BASTION_TLS_SELFSIGNED) — contient une clé privée, jamais commité. En
+# Docker il finit dans /config/tls (déjà ignoré ci-dessus) ; en dev local
+# sans BASTION_DATA_DIR, il atterrit ici, à la racine du dépôt.
+/tls/
+
 # Éditeurs / OS
 .vscode/
 .idea/
