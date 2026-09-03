@@ -11,11 +11,13 @@ import subprocess
 import threading
 import time
 
+import history
 import vnc_tls_bridge
 from store import load_machines
 
 CHECK_INTERVAL_SECONDS = 15
 CHECK_TIMEOUT_SECONDS = 2
+PURGE_INTERVAL_SECONDS = 3600
 
 IS_WINDOWS = platform.system().lower() == "windows"
 
@@ -121,14 +123,39 @@ def get_status_snapshot():
         return dict(status_store)
 
 
+def _record_history(results):
+    """Écrit chaque résultat dans l'historique (voir history.py, pour la
+    page /stats) — appelée séparément de run_checks_once() plutôt que
+    depuis cette fonction, pour ne pas donner à ses tests existants un
+    effet de bord caché sur un vrai fichier SQLite (voir tests/test_monitor.py).
+    Échec non bloquant: un souci d'écriture ici ne doit pas interrompre la
+    boucle de monitoring elle-même."""
+    for machine_id, result in results.items():
+        try:
+            history.record_check(machine_id, result["status"], result["latency_ms"])
+        except Exception as exc:  # noqa: BLE001
+            print(f"[monitor] Échec de l'écriture de l'historique pour {machine_id}: {exc}")
+
+
 def start_background_monitor(socketio):
     """Lance la boucle de monitoring dans un thread de fond et pousse les
     mises à jour aux clients via l'évènement Socket.IO 'status_update'."""
 
     def loop():
+        last_purge = 0.0
         while True:
             results = run_checks_once()
             socketio.emit("status_update", results)
+            _record_history(results)
+
+            now = time.time()
+            if now - last_purge > PURGE_INTERVAL_SECONDS:
+                try:
+                    history.purge_old_entries()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[monitor] Échec de la purge de l'historique: {exc}")
+                last_purge = now
+
             time.sleep(CHECK_INTERVAL_SECONDS)
 
     thread = threading.Thread(target=loop, daemon=True)

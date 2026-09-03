@@ -59,3 +59,10 @@ TLS_KEY = os.environ.get("BASTION_TLS_KEY", "").strip()
 TLS_SELFSIGNED = os.environ.get("BASTION_TLS_SELFSIGNED", "").strip().lower() in (
     "1", "true", "yes",
 )
+
+# Rétention par défaut de l'historique de disponibilité (page /stats, voir
+# history.py) — n'est utilisée que pour amorcer le réglage la toute
+# première fois (aucune ligne encore dans la table "settings" du fichier
+# SQLite) : une fois modifiée depuis l'interface, c'est cette valeur-là qui
+# fait foi, cette variable d'env n'est alors plus relue.
+HISTORY_RETENTION_DAYS_DEFAULT = int(os.environ.get("BASTION_HISTORY_RETENTION_DAYS", "30"))

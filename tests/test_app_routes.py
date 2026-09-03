@@ -5,14 +5,17 @@ Importer `app` déclenche eventlet.monkey_patch() (fait en tête de app.py,
 avant tout le reste, voir son commentaire) pour tout le process pytest.
 Sans effet sur ces tests, mais à garder en tête si des tests ajoutés plus
 tard se comportent bizarrement avec le threading/les sockets standard."""
+import time
+
 import pytest
 
 import app as app_module
+import history
 import store
 
 
 @pytest.fixture
-def client(machines_file, monkeypatch):
+def client(machines_file, history_db, monkeypatch):
     monkeypatch.setattr(app_module.config, "ADMIN_USER", "admin")
     monkeypatch.setattr(app_module.config, "ADMIN_PASSWORD", "admin")
     app_module.app.config.update(TESTING=True, SECRET_KEY="test-secret")
@@ -84,3 +87,69 @@ def test_terminal_page_404s_for_unknown_machine(client):
     client.post("/login", data={"username": "admin", "password": "admin"})
     resp = client.get("/terminal/does-not-exist")
     assert resp.status_code == 404
+
+
+# --- /stats: page de statistiques de disponibilité (voir history.py) ---
+
+def test_stats_page_requires_login(client):
+    resp = client.get("/stats")
+    assert resp.status_code == 302
+
+
+def test_stats_page_loads(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    resp = client.get("/stats")
+
+    assert resp.status_code == 200
+    assert "Serveur Test" in resp.get_data(as_text=True)
+
+
+def test_stats_settings_updates_retention(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post("/stats/settings", data={"retention_days": "10"})
+
+    assert resp.status_code == 302
+    assert history.get_retention_days() == 10
+
+
+def test_stats_settings_rejects_invalid_value(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post("/stats/settings", data={"retention_days": "pas-un-nombre"})
+
+    assert resp.status_code == 302
+    assert "error=" in resp.headers["Location"]
+
+
+def test_stats_purge_deletes_old_entries(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    history.record_check("m1", "down", None, checked_at=time.time() - 40 * 86400)
+
+    resp = client.post("/stats/purge")
+
+    assert resp.status_code == 302
+    assert "purged=1" in resp.headers["Location"]
+
+
+def test_api_history_404s_for_unknown_machine(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    resp = client.get("/api/history/does-not-exist")
+    assert resp.status_code == 404
+
+
+def test_api_history_returns_timeline_json(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+    history.record_check("serveur-test", "up", 5.0)
+
+    resp = client.get("/api/history/serveur-test?hours=1")
+
+    assert resp.status_code == 200
+    assert resp.json["timeline"][-1] == 100.0

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Statistiques — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Statistiques de disponibilité</div>
+</div>
+
+{% if request.args.get('error') %}
+<div class="error-msg">{{ request.args.get('error') }}</div>
+{% endif %}
+{% if request.args.get('saved') %}
+<p class="hint-box">Rétention mise à jour.</p>
+{% endif %}
+{% if request.args.get('purged') is not none %}
+<p class="hint-box">{{ request.args.get('purged') }} entrée(s) supprimée(s).</p>
+{% endif %}
+
+<div class="section-sep">Rétention de l'historique</div>
+<div class="stats-settings">
+  <form method="post" action="{{ url_for('stats_settings') }}" class="inline-form">
+    <div class="field">
+      <label for="retention_days">Jours à conserver</label>
+      <input type="number" id="retention_days" name="retention_days" min="1" value="{{ retention_days }}">
+    </div>
+    <button class="btn primary" type="submit">Enregistrer</button>
+  </form>
+  <form method="post" action="{{ url_for('stats_purge') }}"
+        onsubmit="return confirm('Purger les entrées plus vieilles que {{ retention_days }} jours ?');">
+    <button class="btn danger" type="submit">Purger maintenant</button>
+  </form>
+</div>
+
+<div class="section-sep">Disponibilité par machine</div>
+
+{% if not rows %}
+<p class="hint-box">Aucune machine dans l'inventaire.</p>
+{% else %}
+<div class="period-toggle">
+  <label><input type="radio" name="period" value="24h"> 24 h</label>
+  <label><input type="radio" name="period" value="7d"> 7 jours</label>
+  <label><input type="radio" name="period" value="30d" checked> 30 jours</label>
+</div>
+
+<div class="uptime-list">
+  {% for row in rows %}
+  <div class="uptime-row">
+    <div class="uptime-meta">
+      <span class="uptime-name">{{ row.machine.name }}</span>
+      <span class="uptime-pcts">
+        {% for key, seconds, label in periods %}
+        <span class="uptime-pct" title="{{ label }}">
+          {{ "%.1f"|format(row.uptime[key]) ~ "%" if row.uptime[key] is not none else "—" }}
+        </span>
+        {% endfor %}
+      </span>
+    </div>
+    <div class="uptime-timeline" data-machine="{{ row.machine.id }}"></div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/stats.js') }}"></script>
+{% endblock %}

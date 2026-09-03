@@ -24,6 +24,7 @@ dépendance lourde. Facile à lire, facile à étendre.
 - **Plan interactif par salle** (`/map/<salle>`) : importez une image de plan (n'importe quelle résolution/ratio, voir plus bas), placez les machines dessus par glisser-déposer (souris et tactile), cliquez sur une machine pour ouvrir un accès rapide SSH/VNC ou déclencher un reboot/shutdown.
 - **Terminal SSH** dans le navigateur, avec navigateur de fichiers SFTP dans une colonne latérale (façon MobaXterm).
 - **VNC** dans le navigateur via noVNC, y compris les serveurs chiffrés (VeNCrypt/TLS, RealVNC...) — voir le pont VNC générique ci-dessous.
+- **Statistiques de disponibilité** (`/stats`) : pourcentage de dispo (24h/7j/30j) et frise chronologique par machine, à partir de l'historique des vérifications de `monitor.py` — voir la section dédiée plus bas.
 - **Épinglage de la clé d'hôte SSH (TOFU)** : la première connexion à une machine mémorise sa clé publique ; si elle change ensuite, la connexion est bloquée avec une alerte explicite.
 - **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion.
 
@@ -143,6 +144,7 @@ bastion/
   credentials.py         chiffrement/déchiffrement des identifiants SSH mémorisés
   map_image.py            validation + lecture du ratio des images de plan (voir plus haut)
   monitor.py             thread de fond: ping + test de port SSH
+  history.py               historique de disponibilité (SQLite, page /stats)
   ssh_ws.py               pont Socket.IO <-> Paramiko pour le terminal
   ssh_client.py            connexion SSH avec épinglage de la clé d'hôte (TOFU)
   sftp_ws.py               navigateur de fichiers (colonne latérale du terminal)
@@ -151,9 +153,9 @@ bastion/
   vnc_tls_bridge.py        pont VNC générique (relais transparent, ou VeNCrypt/TLS si besoin)
   debug_vnc_security.py    diagnostic RFB autonome (types de sécurité VNC)
   machines.yaml           inventaire: salles + machines
-  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc)
+  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc, stats)
   static/css/            style.css (thème console sombre)
-  static/js/              dashboard.js, terminal.js, sftp.js, map.js, actions.js
+  static/js/              dashboard.js, terminal.js, sftp.js, map.js, actions.js, stats.js
   static/uploads/maps/    images de plan uploadées
   static/novnc/           noVNC vendoré au build (voir Dockerfile)
 ```
@@ -270,6 +272,30 @@ seul réglage à changer, ou retirez l'appel à `probe_available` dans
 partie de l'ensemble de capacités par défaut de Docker — rien à
 configurer normalement.
 
+## Statistiques de disponibilité (`/stats`)
+
+Chaque vérification faite par `monitor.py` (toutes les 15 secondes, voir
+ci-dessus) est aussi enregistrée dans un historique — pourcentage de
+disponibilité (24h/7j/30j) et frise chronologique par machine, affichés
+sur la page `/stats`.
+
+**Stockage** : un fichier **SQLite séparé** (`history.py`, module
+`sqlite3` de la stdlib Python — aucune nouvelle dépendance),
+`<BASTION_DATA_DIR>/history.db`, donc dans le même volume que
+`machines.yaml` (persistant, voir la section Docker). Choisi plutôt que
+la mémoire (perdu à chaque redémarrage du conteneur, peu utile pour un
+historique) ou un fichier plat (SQLite gère nativement les requêtes par
+plage de temps, ce qu'un CSV/JSON demanderait de réimplémenter à la main).
+
+**Rétention** : les enregistrements plus vieux que la rétention
+configurée sont purgés automatiquement une fois par heure (pour ne pas
+grossir indéfiniment), et à la demande via le bouton **Purger
+maintenant** sur la page `/stats`. Rétention par défaut : **30 jours**,
+via `BASTION_HISTORY_RETENTION_DAYS` — n'amorce la valeur qu'au tout
+premier démarrage (aucun réglage encore enregistré) ; changez-la ensuite
+directement depuis la page `/stats`, c'est cette valeur-là qui fait foi
+par la suite (la variable d'env n'est plus relue).
+
 ## Configuration
 
 Éditez `machines.yaml` pour déclarer vos machines, ou passez par
@@ -302,6 +328,7 @@ Variables d'environnement utiles :
 | `BASTION_DATA_DIR` | dossier contenant `machines.yaml`. L'image Docker la définit à `/app/config` (voir la section Docker) ; sans intérêt à changer hors Docker | dossier de l'appli |
 | `BASTION_TLS_SELFSIGNED` | si `true`, sert HTTPS/WSS directement (app + VNC) avec un certificat auto-signé généré et géré par Bastion — voir la section "TLS sans reverse proxy" | (vide, HTTP) |
 | `BASTION_TLS_CERT` / `BASTION_TLS_KEY` | chemins vers un certificat déjà existant, prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux sont définis | (aucun) |
+| `BASTION_HISTORY_RETENTION_DAYS` | rétention de l'historique de disponibilité (page `/stats`) — n'amorce le réglage qu'au premier démarrage, modifiable ensuite depuis l'interface | `30` |
 
 ## Lancement
 
@@ -352,11 +379,16 @@ services:
       # README. Décommenter pour que Bastion génère et gère seul un
       # certificat auto-signé (stocké dans ./config/tls, persistant) :
       # - BASTION_TLS_SELFSIGNED=true
+      # Rétention de l'historique de disponibilité (page /stats) —
+      # n'amorce ce réglage qu'au 1er démarrage, modifiable ensuite
+      # directement depuis l'interface (voir la section dédiée du README).
+      - BASTION_HISTORY_RETENTION_DAYS=30
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement — voir la note
       # ci-dessous. C'est aussi là qu'un certificat TLS auto-signé
-      # (BASTION_TLS_SELFSIGNED ci-dessus) est stocké, pour persister au
+      # (BASTION_TLS_SELFSIGNED ci-dessus) et l'historique de
+      # disponibilité (history.db) sont stockés, pour persister au
       # rebuild.
       - ./config:/app/config
       # Persister les plans de salle uploadés (sinon perdus au rebuild)
@@ -674,7 +706,6 @@ bastion.example.com {
 
 ## Idées d'évolution
 
-- Historique de disponibilité des machines (graphe uptime)
 - Recherche/filtre sur le dashboard
 - Enregistrement des sessions SSH (asciinema-like)
 - Notifications (mail/Slack) quand une machine passe "down"

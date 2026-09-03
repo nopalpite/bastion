@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 import config
 import store
 import credentials
+import history
 import tls
 from map_image import DEFAULT_MAP_RATIO, get_image_size, validate_map_image
 from monitor import start_background_monitor, get_status_snapshot
@@ -162,6 +163,63 @@ def vnc(machine_id):
         vnc_username=machine.get("vnc_username") or "",
         vnc_password=vnc_password or "",
     )
+
+
+# --- Statistiques de disponibilité (page /stats, voir history.py) ------
+
+STATS_PERIODS = [
+    ("24h", 24 * 3600, "24 h"),
+    ("7d", 7 * 24 * 3600, "7 jours"),
+    ("30d", 30 * 24 * 3600, "30 jours"),
+]
+
+
+@app.route("/stats")
+@login_required
+def stats():
+    machines = store.load_machines()
+    rows = [
+        {
+            "machine": m,
+            "uptime": {
+                key: history.get_uptime_percentage(m["id"], seconds)
+                for key, seconds, _label in STATS_PERIODS
+            },
+        }
+        for m in machines
+    ]
+    return render_template(
+        "stats.html", rows=rows, periods=STATS_PERIODS,
+        retention_days=history.get_retention_days(),
+    )
+
+
+@app.route("/stats/settings", methods=["POST"])
+@login_required
+def stats_settings():
+    try:
+        days = int(request.form.get("retention_days", ""))
+        history.set_retention_days(days)
+    except (ValueError, TypeError):
+        return redirect(url_for("stats", error="Nombre de jours invalide."))
+    return redirect(url_for("stats", saved=1))
+
+
+@app.route("/stats/purge", methods=["POST"])
+@login_required
+def stats_purge():
+    deleted = history.purge_old_entries()
+    return redirect(url_for("stats", purged=deleted))
+
+
+@app.route("/api/history/<machine_id>")
+@login_required
+def api_history(machine_id):
+    if not store.get_machine(machine_id):
+        abort(404)
+    hours = request.args.get("hours", type=int) or 24
+    timeline = history.get_timeline(machine_id, hours * 3600)
+    return jsonify({"timeline": timeline})
 
 
 # --- Gestion de l'inventaire: ajout d'hôte / salle ---------------------

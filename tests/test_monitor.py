@@ -3,6 +3,7 @@ vérifications par machine — sans dépendre d'une vraie machine distante."""
 import socket
 import subprocess
 
+import history
 import monitor
 
 
@@ -108,3 +109,31 @@ def test_run_checks_once_updates_status_store(monkeypatch):
     assert results["m1"]["latency_ms"] == 12.3
     assert results["m1"]["services"] == {"ssh": True}
     assert monitor.get_status_snapshot()["m1"]["status"] == "up"
+
+
+# --- _record_history: écrit dans history.py (page /stats), séparément de
+# run_checks_once() ci-dessus pour ne pas lui donner un effet de bord
+# caché sur un vrai fichier SQLite (voir le commentaire de _record_history
+# dans monitor.py). ---------------------------------------------------
+
+def test_record_history_writes_each_result(history_db):
+    results = {
+        "m1": {"status": "up", "latency_ms": 12.3, "services": {}, "checked_at": 0},
+        "m2": {"status": "down", "latency_ms": None, "services": {}, "checked_at": 0},
+    }
+
+    monitor._record_history(results)
+
+    assert history.get_uptime_percentage("m1", since_seconds=3600) == 100.0
+    assert history.get_uptime_percentage("m2", since_seconds=3600) == 0.0
+
+
+def test_record_history_does_not_raise_on_write_failure(monkeypatch):
+    def boom(*a, **k):
+        raise OSError("disque plein")
+
+    monkeypatch.setattr(monitor.history, "record_check", boom)
+    # Ne doit pas lever, juste logger (voir le commentaire de la fonction) —
+    # la boucle de monitoring ne doit pas planter pour un souci d'écriture
+    # sur ce fichier secondaire.
+    monitor._record_history({"m1": {"status": "up", "latency_ms": 1.0}})

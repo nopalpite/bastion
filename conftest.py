@@ -8,6 +8,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 import gen_vnc_tokens
+import history
 import store
 
 
@@ -30,6 +31,18 @@ def machines_file(tmp_path, monkeypatch):
     path.write_text("rooms: []\nmachines: []\n", encoding="utf-8")
     monkeypatch.setattr(store, "MACHINES_FILE", str(path))
     monkeypatch.setattr(gen_vnc_tokens, "TOKENS_FILE", str(tmp_path / "vnc_tokens.conf"))
+    return path
+
+
+@pytest.fixture
+def history_db(tmp_path, monkeypatch):
+    """Redirige history.py vers un fichier SQLite temporaire pour chaque
+    test, même raison que machines_file ci-dessus: ne jamais lire/écrire
+    le fichier réel du projet (history.DB_FILE est lu au moment de
+    l'import par _connect(), donc monkeypatcher l'attribut du module
+    fonctionne — pas besoin d'env var comme pour credentials_key)."""
+    path = tmp_path / "history.db"
+    monkeypatch.setattr(history, "DB_FILE", str(path))
     return path
 
 
