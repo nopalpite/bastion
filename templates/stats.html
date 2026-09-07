@@ -49,13 +49,18 @@
       <span class="uptime-name">{{ row.machine.name }}</span>
       <span class="uptime-pcts">
         {% for key, seconds, label in periods %}
-        <span class="uptime-pct" title="{{ label }}">
-          {{ "%.1f"|format(row.uptime[key]) ~ "%" if row.uptime[key] is not none else "—" }}
+        <span class="uptime-pct">
+          <span class="uptime-pct-label">{{ label }}</span>
+          <span class="uptime-pct-value">{{ "%.1f"|format(row.uptime[key]) ~ "%" if row.uptime[key] is not none else "—" }}</span>
         </span>
         {% endfor %}
       </span>
     </div>
     <div class="uptime-timeline"></div>
+    <div class="uptime-timeline-labels">
+      <span class="timeline-start"></span>
+      <span class="timeline-end"></span>
+    </div>
     <div class="latency-block">
       <span class="latency-label">Latence</span>
       <div class="latency-chart"></div>

@@ -24,6 +24,27 @@
     }
   }
 
+  // Les segments vont du plus ancien (gauche) au plus récent (droite),
+  // dans le même ordre que history.get_timeline() — sans repère de date,
+  // impossible de savoir à quoi correspond la frise (24h ? la semaine
+  // dernière ?). Calculé côté client: le point de départ dépend de
+  // l'instant où la page est affichée, pas d'une valeur figée côté
+  // serveur au moment du rendu.
+  function formatTimestamp(date) {
+    return date.toLocaleString("fr-FR", {
+      day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function renderTimelineLabels(row, hours) {
+    const startEl = row.querySelector(".timeline-start");
+    const endEl = row.querySelector(".timeline-end");
+    if (!startEl || !endEl) return;
+    const start = new Date(Date.now() - hours * 3600 * 1000);
+    startEl.textContent = formatTimestamp(start);
+    endEl.textContent = "maintenant";
+  }
+
   // Sparkline dessinée à la main (pas de librairie): une valeur par
   // bucket devient un point, les buckets sans donnée (null) coupent la
   // ligne plutôt que d'être interpolés — un trou visible vaut mieux
@@ -75,6 +96,7 @@
     const uptimeEl = row.querySelector(".uptime-timeline");
     const latencyEl = row.querySelector(".latency-chart");
     uptimeEl.classList.add("loading");
+    renderTimelineLabels(row, hours);
     try {
       const res = await fetch(`/api/history/${encodeURIComponent(machineId)}?hours=${hours}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
