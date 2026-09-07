@@ -87,9 +87,21 @@ une IP de conteneur isolée. C'est un point de départ à corriger à la main
 si le découpage réel du réseau diffère, pas une détection garantie exacte.
 
 Chaque machine trouvée est proposée avec un bouton **+ Ajouter** qui
-préremplit le formulaire d'hôte (adresse, nom d'hôte si résolu en DNS
-inverse, ports détectés) — sauf si son adresse est déjà dans l'inventaire,
-auquel cas c'est indiqué à la place.
+préremplit le formulaire d'hôte (adresse, nom d'hôte, ports détectés) —
+sauf si son adresse est déjà dans l'inventaire, auquel cas c'est indiqué
+à la place.
+
+**Résolution du nom d'hôte (mDNS d'abord, DNS classique en repli)** : le
+DNS/DHCP du routeur n'a souvent qu'un nom générique attribué automatique-
+ment pour une IP donnée (ex: `ah-ade980`), pas le vrai nom configuré sur
+la machine (ex: `rpi-3-bureau`) — cas réel observé avec une Raspberry Pi.
+Ces machines (comme la plupart des Linux/Mac) annoncent leur vrai nom via
+**mDNS** (Avahi/Bonjour), interrogé en premier ici via une requête PTR
+brute sur UDP 5353 (RFC 6762, implémentée à la main dans `discovery.py`
+plutôt que d'ajouter une dépendance comme `zeroconf` — même esprit que le
+protocole RFB dans `vnc_tls_bridge.py`) ; le DNS classique
+(`socket.gethostbyaddr`) ne sert que de repli si l'appareil ne répond pas
+(mDNS désactivé, Windows sans Bonjour...).
 
 ## Pont VNC générique (`vnc_tls_bridge.py`)
 

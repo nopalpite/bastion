@@ -21,6 +21,7 @@ d'en réinventer — mêmes garanties, pas de nouveau code réseau à auditer.
 """
 import ipaddress
 import socket
+import struct
 
 import eventlet
 
@@ -30,6 +31,16 @@ import vnc_tls_bridge
 MAX_HOSTS = 254
 VNC_PORTS_TO_CHECK = (5900, 5901)
 POOL_SIZE = 32
+
+# Résolution mDNS (voir _mdns_reverse_lookup) — adresse de groupe standard
+# du protocole (RFC 6762). Nom de module plutôt que constante en dur dans
+# la fonction pour rester monkeypatchable par les tests (voir
+# tests/test_discovery.py, qui pointe ceci vers un faux répondeur local
+# plutôt que le vrai groupe multicast).
+_MDNS_ADDR = ("224.0.0.251", 5353)
+_MDNS_TIMEOUT = 0.6
+_DNS_TYPE_PTR = 12
+_DNS_CLASS_IN = 1
 
 
 class DiscoveryError(Exception):
@@ -85,7 +96,116 @@ def parse_hosts(cidr):
     return hosts
 
 
+def _read_dns_name(data, pos):
+    """Lit un nom DNS encodé (labels préfixés par leur longueur, terminé
+    par un octet nul) à partir de `pos`, avec gestion de la compression
+    par pointeur (RFC 1035 §4.1.4 — les deux bits de poids fort de
+    l'octet de "longueur" à 1 indiquent un pointeur vers une position
+    antérieure du paquet plutôt qu'un label littéral). Très utilisée dans
+    les réponses mDNS réelles pour ne pas répéter le nom de la question.
+
+    Retourne (nom_complet, position juste après cette occurrence dans le
+    paquet) — cette position s'arrête au premier pointeur rencontré
+    (2 octets), PAS à la fin du nom pointé, puisque le paquet continue
+    juste après le pointeur, pas après la cible du pointeur."""
+    labels = []
+    pos_after = None
+    hops = 0
+    while True:
+        if pos >= len(data):
+            raise ValueError("Nom DNS tronqué")
+        length = data[pos]
+        if length == 0:
+            pos += 1
+            if pos_after is None:
+                pos_after = pos
+            break
+        if length & 0xC0 == 0xC0:
+            if pos + 2 > len(data):
+                raise ValueError("Pointeur de compression DNS tronqué")
+            pointer = struct.unpack(">H", data[pos:pos + 2])[0] & 0x3FFF
+            if pos_after is None:
+                pos_after = pos + 2
+            hops += 1
+            if hops > 20:  # boucle de pointeurs corrompue/malveillante
+                raise ValueError("Trop de sauts de compression DNS")
+            pos = pointer
+            continue
+        pos += 1
+        labels.append(data[pos:pos + length].decode("ascii", errors="replace"))
+        pos += length
+    return ".".join(labels), pos_after
+
+
+def _build_ptr_query(ip):
+    """Construit une requête DNS "PTR" pour l'adresse inversée
+    (ex: 20.1.168.192.in-addr.arpa pour 192.168.1.20), format standard
+    aussi utilisé par mDNS (RFC 6762). QCLASS avec le bit "QU" (0x8000,
+    RFC 6762 §5.4) demande une réponse unicast directement vers nous —
+    pas besoin de rejoindre le groupe multicast pour l'écouter."""
+    labels = ip.split(".")[::-1] + ["in-addr", "arpa"]
+    qname = b"".join(bytes([len(label)]) + label.encode("ascii") for label in labels) + b"\x00"
+    header = struct.pack(">HHHHHH", 0, 0, 1, 0, 0, 0)  # 1 question, rien d'autre
+    question = qname + struct.pack(">HH", _DNS_TYPE_PTR, 0x8000 | _DNS_CLASS_IN)
+    return header + question
+
+
+def _parse_ptr_response(data):
+    """Extrait le nom cible du premier enregistrement PTR d'une réponse
+    DNS/mDNS, ou None si le paquet est trop court, malformé, ou ne
+    contient aucun PTR (ex: type de requête différent, hôte inconnu)."""
+    if len(data) < 12:
+        return None
+    try:
+        _id, _flags, qdcount, ancount, _nscount, _arcount = struct.unpack(">HHHHHH", data[:12])
+        pos = 12
+        for _ in range(qdcount):
+            _name, pos = _read_dns_name(data, pos)
+            pos += 4  # QTYPE + QCLASS de la question
+        for _ in range(ancount):
+            _name, pos = _read_dns_name(data, pos)
+            if pos + 10 > len(data):
+                return None
+            rtype, _rclass, _ttl, rdlength = struct.unpack(">HHIH", data[pos:pos + 10])
+            pos += 10
+            if rtype == _DNS_TYPE_PTR:
+                target, _ = _read_dns_name(data, pos)
+                return target.rstrip(".") or None
+            pos += rdlength
+    except (struct.error, ValueError, IndexError):
+        return None
+    return None
+
+
+def _mdns_reverse_lookup(ip, timeout=_MDNS_TIMEOUT):
+    """Interroge directement l'appareil (mDNS/Avahi/Bonjour, RFC 6762)
+    pour son vrai nom d'hôte configuré, plutôt que de dépendre du DNS/
+    DHCP du routeur — celui-ci n'a souvent qu'un nom générique attribué
+    automatiquement pour la même IP, pas le vrai nom de la machine (cas
+    réel observé : une Raspberry Pi nommée "rpi-3-bureau" ressortait
+    comme "ah-ade980" via le DNS du routeur). Implémenté à la main
+    (paquet DNS brut sur UDP 5353) plutôt que d'ajouter une dépendance
+    comme zeroconf — même esprit que le protocole RFB dans
+    vnc_tls_bridge.py. Retourne None si l'appareil ne répond pas (mDNS
+    désactivé, Windows sans Bonjour...), pas une erreur : le signal pour
+    retomber sur le DNS classique (voir _reverse_dns)."""
+    packet = _build_ptr_query(ip)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(timeout)
+    try:
+        sock.sendto(packet, _MDNS_ADDR)
+        data, _addr = sock.recvfrom(4096)
+    except OSError:
+        return None
+    finally:
+        sock.close()
+    return _parse_ptr_response(data)
+
+
 def _reverse_dns(ip):
+    hostname = _mdns_reverse_lookup(ip)
+    if hostname:
+        return hostname
     try:
         hostname, _aliases, _addrs = socket.gethostbyaddr(ip)
         return hostname
