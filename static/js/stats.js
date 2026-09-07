@@ -27,22 +27,38 @@
   // Les segments vont du plus ancien (gauche) au plus récent (droite),
   // dans le même ordre que history.get_timeline() — sans repère de date,
   // impossible de savoir à quoi correspond la frise (24h ? la semaine
-  // dernière ?). Calculé côté client: le point de départ dépend de
-  // l'instant où la page est affichée, pas d'une valeur figée côté
-  // serveur au moment du rendu.
-  function formatTimestamp(date) {
-    return date.toLocaleString("fr-FR", {
-      day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
-    });
+  // dernière ?). Plusieurs graduations réparties le long de l'axe
+  // (façon panneau Grafana "state timeline") plutôt que juste les deux
+  // extrémités, pour repérer un point précis sans calculer soi-même.
+  // Calculé côté client: dépend de l'instant où la page est affichée,
+  // pas d'une valeur figée côté serveur au moment du rendu.
+  const TICK_COUNT = 6;
+
+  function formatTick(date, hours) {
+    // En dessous de 48h, l'heure seule suffit à situer un point ; au-delà
+    // (7j/30j), la date compte plus que la minute près.
+    if (hours <= 48) {
+      return date.toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    }
+    return date.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit" });
   }
 
   function renderTimelineLabels(row, hours) {
-    const startEl = row.querySelector(".timeline-start");
-    const endEl = row.querySelector(".timeline-end");
-    if (!startEl || !endEl) return;
-    const start = new Date(Date.now() - hours * 3600 * 1000);
-    startEl.textContent = formatTimestamp(start);
-    endEl.textContent = "maintenant";
+    const container = row.querySelector(".uptime-timeline-labels");
+    if (!container) return;
+    container.innerHTML = "";
+    const now = Date.now();
+    const startMs = now - hours * 3600 * 1000;
+    for (let i = 0; i < TICK_COUNT; i++) {
+      const span = document.createElement("span");
+      if (i === TICK_COUNT - 1) {
+        span.textContent = "maintenant";
+      } else {
+        const t = startMs + (i / (TICK_COUNT - 1)) * (now - startMs);
+        span.textContent = formatTick(new Date(t), hours);
+      }
+      container.appendChild(span);
+    }
   }
 
   // Sparkline dessinée à la main (pas de librairie): une valeur par
