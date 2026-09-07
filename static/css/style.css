@@ -341,16 +341,24 @@ body.page-map .container { max-width: none; }
 /* Barre de touches spéciales, absentes des claviers virtuels mobiles
    (Tab/Échap/Ctrl/flèches...) — cachée par défaut, activée uniquement
    sous le point de rupture mobile (voir media query plus bas): sur
-   desktop, le clavier physique fournit déjà ces touches. */
+   desktop, le clavier physique fournit déjà ces touches.
+
+   flex-wrap plutôt qu'un défilement horizontal (overflow-x: auto) : les
+   11 boutons dépassent la largeur d'un écran de téléphone, et un défile-
+   ment sans aucun indice visuel (pas de barre de défilement, rien qui
+   dépasse à moitié) ne se découvre pas — signalé en usage réel comme
+   "on ne voit pas toute la barre", le dernier bouton semblant coupé sans
+   qu'il soit évident qu'il suffit de balayer pour le révéler. Passer sur
+   deux lignes rend tous les boutons visibles d'emblée, sans dépendre d'un
+   geste. */
 .mobile-keys {
   display: none;
+  flex-wrap: wrap;
   flex-shrink: 0;
   gap: 4px;
   padding: 6px 8px;
-  overflow-x: auto;
   border-bottom: 1px solid var(--border);
   background: var(--bg-raised);
-  -webkit-overflow-scrolling: touch;
 }
 .mobile-keys button {
   flex-shrink: 0;

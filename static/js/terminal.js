@@ -268,25 +268,6 @@ const SPECIAL_KEYS = {
   PageDown: "\x1b[6~",
 };
 
-// Toast de debug: confirme qu'un appui a bien été reçu par le navigateur
-// (le fix précédent, basé sur touchend, n'a pas suffi — ce toast sert à
-// voir si le tap est détecté du tout, ou si l'action derrière plante).
-// À retirer une fois le bug identifié.
-function showToast(message, isError) {
-  let el = document.getElementById("debug-toast");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "debug-toast";
-    el.className = "toast";
-    document.body.appendChild(el);
-  }
-  el.textContent = message;
-  el.classList.toggle("error", !!isError);
-  el.classList.add("visible");
-  clearTimeout(el._hideTimer);
-  el._hideTimer = setTimeout(() => el.classList.remove("visible"), 3000);
-}
-
 // Un tap sur ces boutons ne doit pas voler le focus du terminal, sinon le
 // clavier virtuel se ferme — d'où mousedown/touchstart avec preventDefault().
 // Mais preventDefault() sur touchstart supprime aussi, sur la plupart des
@@ -296,34 +277,34 @@ function showToast(message, isError) {
 // un vrai test sur téléphone). Fix: déclencher l'action sur touchend (avec
 // son propre preventDefault, qui annule bien le click fantôme qui suivrait)
 // pour le tactile, et garder "click" pour la souris/clavier (desktop).
-function runTap(label, action) {
-  showToast(`Appui détecté: ${label}`);
-  try {
-    action();
-  } catch (err) {
-    showToast(`BUG (${label}): ${err.message}`, true);
-  }
-}
-
-function bindTap(el, label, action) {
+function bindTap(el, action) {
   el.addEventListener("mousedown", (e) => e.preventDefault());
   el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
   el.addEventListener("touchend", (e) => {
     e.preventDefault();
-    runTap(label, action);
+    action();
   });
-  el.addEventListener("click", () => runTap(label, action));
+  el.addEventListener("click", action);
 }
 
 document.querySelectorAll("#mobile-keys button[data-key]").forEach((btn) => {
-  bindTap(btn, btn.dataset.key, () => {
+  // Pas de term.focus() ici: ces touches envoient une séquence complète en
+  // une fois (pas besoin que le terminal soit focus pour ça, voir onData
+  // plus haut) — le seul effet d'un focus serait de rouvrir le clavier
+  // virtuel juste après l'avoir fermé pour taper sur ce bouton, ce qui est
+  // exactement le comportement gênant signalé (survient sur toutes ces
+  // touches, pas seulement Tab).
+  bindTap(btn, () => {
     socket.emit("ssh_input", { data: SPECIAL_KEYS[btn.dataset.key] });
-    if (term) term.focus();
   });
 });
 
 if (ctrlBtn) {
-  bindTap(ctrlBtn, "Ctrl", () => {
+  // Ici en revanche term.focus() est voulu: contrairement aux touches
+  // ci-dessus, Ctrl ne fait qu'armer ctrlSticky (voir onData plus haut) —
+  // l'utilisateur va taper la touche à combiner juste après, donc le
+  // clavier virtuel doit rester (ou revenir) ouvert pour ça.
+  bindTap(ctrlBtn, () => {
     ctrlSticky = !ctrlSticky;
     ctrlBtn.classList.toggle("active", ctrlSticky);
     if (term) term.focus();
