@@ -14,6 +14,7 @@ from flask import request
 from flask_socketio import emit
 
 import credentials
+import history
 import ssh_client
 from ssh_client import HostKeyChanged
 from store import get_machine
@@ -53,7 +54,16 @@ def register_ssh_handlers(socketio):
             return
 
         channel = client.invoke_shell(term="xterm")
-        sessions[sid] = {"client": client, "channel": channel, "sftp": None}
+        session_id = None
+        try:
+            session_id = history.start_session(
+                machine["id"], "ssh", source_ip=request.remote_addr,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[ssh_ws] Échec de l'enregistrement de la session pour {machine['id']}: {exc}")
+        sessions[sid] = {
+            "client": client, "channel": channel, "sftp": None, "session_id": session_id,
+        }
 
         def stream_output():
             try:
@@ -142,6 +152,10 @@ def register_ssh_handlers(socketio):
         pending_key_confirmation.pop(sid, None)
         session = sessions.pop(sid, None)
         if session:
+            try:
+                history.end_session(session.get("session_id"))
+            except Exception as exc:  # noqa: BLE001
+                print(f"[ssh_ws] Échec de la clôture de session dans l'historique: {exc}")
             try:
                 for upload in session.get("uploads", {}).values():
                     try:

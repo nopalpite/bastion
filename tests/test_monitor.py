@@ -137,3 +137,51 @@ def test_record_history_does_not_raise_on_write_failure(monkeypatch):
     # la boucle de monitoring ne doit pas planter pour un souci d'écriture
     # sur ce fichier secondaire.
     monitor._record_history({"m1": {"status": "up", "latency_ms": 1.0}})
+
+
+# --- _notify_transitions: notification (voir notifications.py) sur
+# changement d'état, pas à chaque tour où l'état reste identique. -------
+
+def test_notify_transitions_sends_on_status_change(monkeypatch, machines_file):
+    import store
+    store.add_machine(name="Serveur X", os_type="linux", host="10.0.0.1")
+    sent = []
+    monkeypatch.setattr(monitor.notifications, "send", lambda msg: sent.append(msg))
+
+    previous = {"serveur-x": {"status": "up"}}
+    results = {"serveur-x": {"status": "down"}}
+    monitor._notify_transitions(previous, results)
+
+    assert len(sent) == 1
+    assert "Serveur X" in sent[0]
+
+
+def test_notify_transitions_silent_when_status_unchanged(monkeypatch):
+    sent = []
+    monkeypatch.setattr(monitor.notifications, "send", lambda msg: sent.append(msg))
+
+    previous = {"m1": {"status": "down"}}
+    results = {"m1": {"status": "down"}}
+    monitor._notify_transitions(previous, results)
+
+    assert sent == []
+
+
+def test_notify_transitions_silent_on_first_ever_check(monkeypatch):
+    # Pas d'entrée précédente pour cette machine (premier tour après
+    # démarrage) : ce n'est pas une transition, juste l'état initial.
+    sent = []
+    monkeypatch.setattr(monitor.notifications, "send", lambda msg: sent.append(msg))
+
+    monitor._notify_transitions({}, {"m1": {"status": "down"}})
+
+    assert sent == []
+
+
+def test_notify_transitions_does_not_raise_on_failure(monkeypatch):
+    def boom(msg):
+        raise OSError("réseau injoignable")
+
+    monkeypatch.setattr(monitor.notifications, "send", boom)
+    # Ne doit pas lever, même raison que _record_history ci-dessus.
+    monitor._notify_transitions({"m1": {"status": "up"}}, {"m1": {"status": "down"}})

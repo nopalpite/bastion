@@ -127,3 +127,68 @@ def test_get_latency_timeline_ignores_down_checks(history_db):
 def test_get_latency_timeline_empty_when_no_data(history_db):
     timeline = history.get_latency_timeline("unknown", since_seconds=3600, buckets=6)
     assert timeline == [None] * 6
+
+
+# --- Journal des connexions (page /sessions) ----------------------------
+
+def test_start_session_returns_an_id(history_db):
+    session_id = history.start_session("m1", "ssh", source_ip="10.0.0.5")
+    assert session_id is not None
+
+
+def test_get_recent_sessions_reflects_open_session(history_db):
+    history.start_session("m1", "ssh", source_ip="10.0.0.5")
+
+    sessions = history.get_recent_sessions()
+
+    assert len(sessions) == 1
+    assert sessions[0]["machine_id"] == "m1"
+    assert sessions[0]["protocol"] == "ssh"
+    assert sessions[0]["source_ip"] == "10.0.0.5"
+    assert sessions[0]["ended_at"] is None
+
+
+def test_end_session_sets_ended_at(history_db):
+    session_id = history.start_session("m1", "vnc")
+
+    history.end_session(session_id)
+
+    sessions = history.get_recent_sessions()
+    assert sessions[0]["ended_at"] is not None
+
+
+def test_end_session_ignores_none_id(history_db):
+    history.end_session(None)  # ne doit pas lever (voir ssh_ws.py: pas de session ouverte)
+
+
+def test_get_recent_sessions_most_recent_first(history_db):
+    old_id = history.start_session("m1", "ssh", source_ip=None)
+    with history._connect() as conn:
+        conn.execute("UPDATE sessions SET started_at = ? WHERE id = ?", (time.time() - 100, old_id))
+    history.start_session("m2", "vnc", source_ip=None)
+
+    sessions = history.get_recent_sessions()
+
+    assert [s["machine_id"] for s in sessions] == ["m2", "m1"]
+
+
+def test_get_recent_sessions_respects_limit(history_db):
+    for i in range(5):
+        history.start_session(f"m{i}", "ssh")
+
+    assert len(history.get_recent_sessions(limit=2)) == 2
+
+
+def test_purge_old_entries_also_purges_old_sessions(history_db):
+    old_id = history.start_session("m1", "ssh")
+    with history._connect() as conn:
+        conn.execute(
+            "UPDATE sessions SET started_at = ? WHERE id = ?",
+            (time.time() - 40 * 86400, old_id),
+        )
+    history.start_session("m2", "ssh")
+
+    deleted = history.purge_old_entries()
+
+    assert deleted == 1
+    assert [s["machine_id"] for s in history.get_recent_sessions()] == ["m2"]

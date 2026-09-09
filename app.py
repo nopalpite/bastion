@@ -12,9 +12,10 @@ import eventlet
 eventlet.monkey_patch()
 
 import os
+from datetime import datetime
 
 from flask import (
-    Flask, render_template, redirect, url_for, request, session, abort, jsonify,
+    Flask, render_template, redirect, url_for, request, session, abort, jsonify, send_file,
 )
 from flask_socketio import SocketIO
 from werkzeug.utils import secure_filename
@@ -226,6 +227,39 @@ def api_history(machine_id):
     })
 
 
+# --- Journal des connexions (page /sessions, voir history.py) ----------
+
+def _format_duration(seconds):
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds} s"
+    minutes, seconds = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes} min {seconds:02d} s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes:02d} min"
+
+
+@app.route("/sessions")
+@login_required
+def sessions_log():
+    machines_by_id = {m["id"]: m for m in store.load_machines()}
+    rows = []
+    for s in history.get_recent_sessions():
+        machine = machines_by_id.get(s["machine_id"])
+        duration = (
+            _format_duration(s["ended_at"] - s["started_at"]) if s["ended_at"] else "en cours"
+        )
+        rows.append({
+            "machine_name": machine["name"] if machine else s["machine_id"],
+            "protocol": s["protocol"].upper(),
+            "source_ip": s["source_ip"] or "—",
+            "started": datetime.fromtimestamp(s["started_at"]).strftime("%d/%m/%Y %H:%M:%S"),
+            "duration": duration,
+        })
+    return render_template("sessions.html", rows=rows)
+
+
 # --- Découverte réseau (page /discover, voir discovery.py) -------------
 
 @app.route("/discover", methods=["GET", "POST"])
@@ -248,6 +282,39 @@ def discover():
         default_cidr=discovery.guess_local_cidr(),
         existing_hosts=existing_hosts,
     )
+
+
+# --- Export / import de l'inventaire (sauvegarde, migration) -----------
+
+@app.route("/hosts/export")
+@login_required
+def export_hosts():
+    return send_file(
+        config.MACHINES_FILE, as_attachment=True,
+        download_name="machines.yaml", mimetype="application/x-yaml",
+    )
+
+
+@app.route("/hosts/import", methods=["GET", "POST"])
+@login_required
+def import_hosts():
+    if request.method == "POST":
+        file = request.files.get("import_file")
+        if not file or not file.filename:
+            return render_template("import_hosts.html", error="Aucun fichier sélectionné.")
+        try:
+            content = file.read().decode("utf-8")
+        except UnicodeDecodeError:
+            return render_template(
+                "import_hosts.html", error="Fichier illisible (encodage invalide).",
+            )
+        try:
+            store.import_machines_yaml(content)
+        except store.InventoryImportError as exc:
+            return render_template("import_hosts.html", error=str(exc))
+        return redirect(url_for("dashboard", imported=1))
+
+    return render_template("import_hosts.html", error=None)
 
 
 # --- Gestion de l'inventaire: ajout d'hôte / salle ---------------------

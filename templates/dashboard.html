@@ -11,10 +11,16 @@
   <div class="page-actions">
     <button class="btn" id="toggle-layout">Vue compacte</button>
     <a class="btn" href="{{ url_for('discover') }}">Découverte réseau</a>
+    <a class="btn" href="{{ url_for('export_hosts') }}">Exporter</a>
+    <a class="btn" href="{{ url_for('import_hosts') }}">Importer</a>
     <a class="btn" href="{{ url_for('new_room') }}">+ Salle</a>
     <a class="btn primary" href="{{ url_for('new_host') }}">+ Hôte</a>
   </div>
 </div>
+
+{% if request.args.get('imported') %}
+<p class="hint-box">Inventaire importé avec succès.</p>
+{% endif %}
 
 {% if total_count %}
 <div class="dashboard-search">

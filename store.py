@@ -24,7 +24,9 @@ Toutes les fonctions relisent/réécrivent le fichier entier: c'est
 volontairement simple (pas de base de données) et suffisant pour un
 inventaire de quelques dizaines/centaines de machines.
 """
+import os
 import re
+import shutil
 import threading
 import unicodedata
 
@@ -34,6 +36,11 @@ import credentials
 from config import MACHINES_FILE
 
 _lock = threading.Lock()
+
+
+class InventoryImportError(Exception):
+    """Fichier d'import invalide (voir import_machines_yaml) — message
+    déjà prêt à afficher tel quel à l'utilisateur, pas une erreur interne."""
 
 
 def _regenerate_vnc_tokens():
@@ -371,4 +378,35 @@ def delete_room(room_id):
                 m.pop("room", None)
                 m.pop("position", None)
         _save(data)
+
+
+def import_machines_yaml(content):
+    """Remplace tout l'inventaire par le contenu YAML fourni (page
+    /hosts/import) après validation minimale de sa structure — seule la
+    forme générale est vérifiée (deux listes "rooms"/"machines"), pas le
+    détail de chaque machine : les routes/templates existants lisent déjà
+    chaque champ avec .get() et tolèrent l'absence des champs optionnels.
+
+    Sauvegarde l'ancien fichier en <MACHINES_FILE>.bak avant d'écraser —
+    une seule génération de secours (pas un historique complet), pour
+    permettre de revenir en arrière après un import malencontreux sans
+    prétendre à un vrai système de versions."""
+    try:
+        data = yaml.safe_load(content) or {}
+    except yaml.YAMLError as exc:
+        raise InventoryImportError(f"YAML invalide : {exc}") from exc
+
+    if not isinstance(data, dict) or "rooms" not in data or "machines" not in data:
+        raise InventoryImportError(
+            "Structure invalide : les clés 'rooms' et 'machines' sont requises."
+        )
+    if not isinstance(data["rooms"], list) or not isinstance(data["machines"], list):
+        raise InventoryImportError("'rooms' et 'machines' doivent être des listes.")
+
+    with _lock:
+        if os.path.exists(MACHINES_FILE):
+            shutil.copy(MACHINES_FILE, MACHINES_FILE + ".bak")
+        with open(MACHINES_FILE, "w", encoding="utf-8") as f:
+            f.write(content)
+    _regenerate_vnc_tokens()
 

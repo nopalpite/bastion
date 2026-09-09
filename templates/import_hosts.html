@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Importer l'inventaire — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-title">Importer l'inventaire</div>
+
+<p class="hint-box">
+  Remplace <strong>tout</strong> l'inventaire actuel (machines et salles)
+  par le contenu du fichier importé (format <code>machines.yaml</code>,
+  voir <a href="{{ url_for('export_hosts') }}">Exporter</a> pour un
+  exemple). Une copie de l'inventaire actuel est conservée dans
+  <code>machines.yaml.bak</code> avant l'écrasement.
+</p>
+
+{% if error %}<div class="error-msg">{{ error }}</div>{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="wide-form"
+      onsubmit="return confirm('Remplacer tout l\'inventaire actuel par ce fichier ? Cette action écrase les machines et salles existantes.');">
+  <div class="field">
+    <label for="import_file">Fichier machines.yaml</label>
+    <input type="file" id="import_file" name="import_file" accept=".yaml,.yml" required>
+  </div>
+  <div class="form-actions">
+    <button class="btn danger" type="submit">Importer (remplace tout)</button>
+    <a class="btn" href="{{ url_for('dashboard') }}">Annuler</a>
+  </div>
+</form>
+{% endblock %}

@@ -26,6 +26,9 @@ dépendance lourde. Facile à lire, facile à étendre.
 - **Terminal SSH** dans le navigateur, avec navigateur de fichiers SFTP dans une colonne latérale (façon MobaXterm).
 - **VNC** dans le navigateur via noVNC, y compris les serveurs chiffrés (VeNCrypt/TLS, RealVNC...) — voir le pont VNC générique ci-dessous.
 - **Statistiques de disponibilité** (`/stats`) : pourcentage de dispo (24h/7j/30j) et frise chronologique par machine, à partir de l'historique des vérifications de `monitor.py` — voir la section dédiée plus bas.
+- **Notifications** (optionnel) : webhook (Slack/Discord/Mattermost...) envoyé quand une machine passe up↔down — voir la section dédiée plus bas.
+- **Journal des connexions** (`/sessions`) : qui s'est connecté à quelle machine, quand, par quel protocole (SSH/VNC) — voir la section dédiée plus bas.
+- **Export / import de l'inventaire** (`+ Hôte` → `Exporter`/`Importer`) : sauvegarde ou migration de `machines.yaml` depuis l'interface.
 - **Épinglage de la clé d'hôte SSH (TOFU)** : la première connexion à une machine mémorise sa clé publique ; si elle change ensuite, la connexion est bloquée avec une alerte explicite.
 - **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion.
 
@@ -191,7 +194,8 @@ bastion/
   credentials.py         chiffrement/déchiffrement des identifiants SSH mémorisés
   map_image.py            validation + lecture du ratio des images de plan (voir plus haut)
   monitor.py             thread de fond: ping + test de port SSH
-  history.py               historique de disponibilité (SQLite, page /stats)
+  history.py               historique de disponibilité + sessions (SQLite, /stats et /sessions)
+  notifications.py          webhook de notification (up/down, voir monitor.py)
   discovery.py             découverte réseau bornée (page /discover)
   ssh_ws.py               pont Socket.IO <-> Paramiko pour le terminal
   ssh_client.py            connexion SSH avec épinglage de la clé d'hôte (TOFU)
@@ -336,13 +340,61 @@ historique) ou un fichier plat (SQLite gère nativement les requêtes par
 plage de temps, ce qu'un CSV/JSON demanderait de réimplémenter à la main).
 
 **Rétention** : les enregistrements plus vieux que la rétention
-configurée sont purgés automatiquement une fois par heure (pour ne pas
-grossir indéfiniment), et à la demande via le bouton **Purger
-maintenant** sur la page `/stats`. Rétention par défaut : **30 jours**,
-via `BASTION_HISTORY_RETENTION_DAYS` — n'amorce la valeur qu'au tout
-premier démarrage (aucun réglage encore enregistré) ; changez-la ensuite
-directement depuis la page `/stats`, c'est cette valeur-là qui fait foi
-par la suite (la variable d'env n'est plus relue).
+configurée (vérifications *et* sessions, voir le journal des connexions
+plus bas — même réglage pour les deux) sont purgés automatiquement une
+fois par heure (pour ne pas grossir indéfiniment), et à la demande via le
+bouton **Purger maintenant** sur la page `/stats`. Rétention par défaut :
+**30 jours**, via `BASTION_HISTORY_RETENTION_DAYS` — n'amorce la valeur
+qu'au tout premier démarrage (aucun réglage encore enregistré) ;
+changez-la ensuite directement depuis la page `/stats`, c'est cette
+valeur-là qui fait foi par la suite (la variable d'env n'est plus relue).
+
+## Notifications (optionnel)
+
+Un webhook générique (Slack, Discord, Mattermost...) est appelé par
+`monitor.py` (`notifications.py`) quand une machine **change d'état**
+(up→down ou down→up) — pas à chaque tour de vérification tant qu'elle
+reste dans le même état, uniquement sur la transition elle-même :
+c'est ce qui évite d'être notifié en boucle tant qu'une machine reste
+injoignable.
+
+Configurez `BASTION_NOTIFY_WEBHOOK_URL` avec l'URL de votre webhook
+entrant (Slack "Incoming Webhooks", webhook Discord, Mattermost...) —
+vide par défaut (désactivé). Le message est envoyé avec à la fois un
+champ `text` (Slack/Mattermost) et `content` (Discord) dans le même
+payload JSON, plutôt que de détecter/configurer un "type" de webhook à
+part : chaque service ignore simplement le champ qu'il ne reconnaît pas.
+Implémenté avec `urllib.request` (stdlib), aucune nouvelle dépendance.
+Un échec d'envoi (webhook injoignable, mal configuré...) est journalisé
+côté serveur mais n'interrompt jamais la boucle de monitoring.
+
+## Journal des connexions (`/sessions`)
+
+Historique de qui s'est connecté à quelle machine, quand, et par quel
+protocole (SSH ou VNC) — les 200 connexions les plus récentes. Stocké
+dans la même base SQLite que les statistiques de disponibilité
+(`history.py`, table `sessions`), avec la même rétention/purge.
+
+**Adresse IP source** : disponible pour SSH (connexion WebSocket directe
+vers l'appli Flask, `request.remote_addr`), mais pas pour VNC — le pont
+VNC (`vnc_tls_bridge.py`) ne voit que l'adresse locale de `websockify`
+(127.0.0.1), pas le vrai client distant, donc ce champ reste vide dans ce
+cas plutôt que d'afficher une IP trompeuse.
+
+## Export / import de l'inventaire
+
+Deux boutons sur le dashboard (à côté de `+ Hôte`) :
+- **Exporter** : télécharge `machines.yaml` tel quel (y compris les
+  identifiants mémorisés, toujours chiffrés) — utile pour une sauvegarde
+  ou une migration vers une autre instance. Les identifiants chiffrés ne
+  se déchiffreront que sur une instance utilisant la même
+  `BASTION_CREDENTIALS_KEY`.
+- **Importer** : remplace **tout** l'inventaire actuel (machines et
+  salles) par le fichier fourni, après validation minimale de sa
+  structure (`rooms`/`machines` doivent être des listes). Une copie de
+  l'inventaire précédent est conservée dans `machines.yaml.bak` avant
+  l'écrasement — une seule génération de secours, pas un historique
+  complet, mais de quoi revenir en arrière après un import malencontreux.
 
 ## Configuration
 
@@ -377,6 +429,7 @@ Variables d'environnement utiles :
 | `BASTION_TLS_SELFSIGNED` | si `true`, sert HTTPS/WSS directement (app + VNC) avec un certificat auto-signé généré et géré par Bastion — voir la section "TLS sans reverse proxy" | (vide, HTTP) |
 | `BASTION_TLS_CERT` / `BASTION_TLS_KEY` | chemins vers un certificat déjà existant, prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux sont définis | (aucun) |
 | `BASTION_HISTORY_RETENTION_DAYS` | rétention de l'historique de disponibilité (page `/stats`) — n'amorce le réglage qu'au premier démarrage, modifiable ensuite depuis l'interface | `30` |
+| `BASTION_NOTIFY_WEBHOOK_URL` | webhook (Slack/Discord/Mattermost...) notifié quand une machine change d'état (up/down) — voir la section "Notifications" | (vide, désactivé) |
 
 ## Lancement
 
@@ -431,6 +484,10 @@ services:
       # n'amorce ce réglage qu'au 1er démarrage, modifiable ensuite
       # directement depuis l'interface (voir la section dédiée du README).
       - BASTION_HISTORY_RETENTION_DAYS=30
+      # Optionnel: webhook (Slack/Discord/Mattermost...) notifié quand une
+      # machine change d'état (up/down) — voir la section "Notifications"
+      # du README. Vide par défaut (désactivé).
+      - BASTION_NOTIFY_WEBHOOK_URL=
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement — voir la note
@@ -749,11 +806,11 @@ bastion.example.com {
   (voir le pont VNC générique).
 - **HTTPS/WSS** : mettez un reverse proxy (nginx/Traefik) devant l'app en
   TLS (voir section dédiée).
-- **Traçabilité** : envisager de journaliser les ouvertures de session
-  (qui se connecte à quelle machine et quand).
+- **Traçabilité** : le journal des connexions (`/sessions`) enregistre
+  quelle machine, quand, par quel protocole, et l'IP source pour SSH —
+  mais pas un vrai "qui", puisque l'authentification à l'interface reste
+  un identifiant unique partagé (voir "Authentification" ci-dessus).
 
 ## Idées d'évolution
 
-- Recherche/filtre sur le dashboard
-- Enregistrement des sessions SSH (asciinema-like)
-- Notifications (mail/Slack) quand une machine passe "down"
+- Enregistrement des sessions SSH (asciinema-like, avec relecture)

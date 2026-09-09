@@ -35,6 +35,10 @@ services:
       # n'amorce ce réglage qu'au 1er démarrage, modifiable ensuite
       # directement depuis l'interface (voir la section dédiée du README).
       - BASTION_HISTORY_RETENTION_DAYS=30
+      # Optionnel: webhook (Slack/Discord/Mattermost...) notifié quand une
+      # machine change d'état (up/down) — voir la section "Notifications"
+      # du README. Vide par défaut (désactivé).
+      - BASTION_NOTIFY_WEBHOOK_URL=
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement: voir BASTION_DATA_DIR

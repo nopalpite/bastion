@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Sessions — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Journal des connexions</div>
+</div>
+
+<p class="hint-box">
+  Qui s'est connecté à quelle machine, quand, et par quel protocole
+  (SSH ou VNC) — les 200 connexions les plus récentes, les plus récentes
+  en premier. L'adresse IP source n'est disponible que pour SSH (le pont
+  VNC ne voit que l'adresse locale de websockify, pas le vrai client).
+</p>
+
+{% if not rows %}
+<p class="hint-box">Aucune connexion enregistrée pour l'instant.</p>
+{% else %}
+<div class="sessions-table">
+  <div class="sessions-row sessions-head">
+    <span>Machine</span>
+    <span>Protocole</span>
+    <span>Depuis</span>
+    <span>Début</span>
+    <span>Durée</span>
+  </div>
+  {% for row in rows %}
+  <div class="sessions-row">
+    <span>{{ row.machine_name }}</span>
+    <span class="protocol-badge">{{ row.protocol }}</span>
+    <span class="mono">{{ row.source_ip }}</span>
+    <span class="mono">{{ row.started }}</span>
+    <span>{{ row.duration }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

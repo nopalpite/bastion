@@ -12,8 +12,9 @@ import threading
 import time
 
 import history
+import notifications
 import vnc_tls_bridge
-from store import load_machines
+from store import get_machine, load_machines
 
 CHECK_INTERVAL_SECONDS = 15
 CHECK_TIMEOUT_SECONDS = 2
@@ -137,6 +138,30 @@ def _record_history(results):
             print(f"[monitor] Échec de l'écriture de l'historique pour {machine_id}: {exc}")
 
 
+def _notify_transitions(previous, results):
+    """Envoie une notification (voir notifications.py) pour chaque machine
+    dont le statut ping a changé depuis le tour précédent — pas à chaque
+    tour où elle reste "down" (l'anti-spam vient directement du fait qu'on
+    ne compare qu'à l'état précédent, pas qu'on répète l'état courant).
+    Rien n'est envoyé pour une machine jamais vue avant (premier tour
+    après démarrage) : ce n'est pas une transition, juste l'état initial.
+    Échec non bloquant, même raison que _record_history ci-dessus."""
+    for machine_id, result in results.items():
+        old = previous.get(machine_id)
+        if old is None or old["status"] == result["status"]:
+            continue
+        try:
+            machine = get_machine(machine_id)
+            name = machine["name"] if machine else machine_id
+            if result["status"] == "down":
+                message = f"🔴 {name} ne répond plus au ping."
+            else:
+                message = f"🟢 {name} répond de nouveau au ping."
+            notifications.send(message)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[monitor] Échec de la notification pour {machine_id}: {exc}")
+
+
 def start_background_monitor(socketio):
     """Lance la boucle de monitoring dans un thread de fond et pousse les
     mises à jour aux clients via l'évènement Socket.IO 'status_update'."""
@@ -144,9 +169,11 @@ def start_background_monitor(socketio):
     def loop():
         last_purge = 0.0
         while True:
+            previous = get_status_snapshot()
             results = run_checks_once()
             socketio.emit("status_update", results)
             _record_history(results)
+            _notify_transitions(previous, results)
 
             now = time.time()
             if now - last_purge > PURGE_INTERVAL_SECONDS:

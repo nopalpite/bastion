@@ -75,6 +75,7 @@ import time
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 import credentials
+import history
 import store
 
 CHALLENGE_SIZE = 16
@@ -510,6 +511,30 @@ def _bridge_plain_passthrough(client_sock, raw_sock, raw_version, raw_count, raw
 
 
 def bridge_connection(client_sock, machine, pin_certificate):
+    """Point d'entrée public : enregistre la session dans l'historique
+    (voir history.py, page /sessions) autour de _bridge_connection_inner,
+    sans toucher à sa logique — celle-ci a plusieurs sorties anticipées
+    (sonde échouée, type de sécurité non supporté...), plus simple et
+    moins risqué d'envelopper la fonction entière une seule fois ici que
+    d'ajouter start/end_session à chaque `return` existant. source_ip
+    volontairement absent : ce socket vient de websockify en local
+    (127.0.0.1), pas du vrai client distant — voir history.start_session."""
+    session_id = None
+    try:
+        session_id = history.start_session(machine.get("id", "?"), "vnc")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[vnc_tls_bridge] Échec de l'enregistrement de la session pour "
+              f"{machine.get('id', '?')}: {exc}")
+    try:
+        _bridge_connection_inner(client_sock, machine, pin_certificate)
+    finally:
+        try:
+            history.end_session(session_id)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[vnc_tls_bridge] Échec de la clôture de session dans l'historique: {exc}")
+
+
+def _bridge_connection_inner(client_sock, machine, pin_certificate):
     """Gère une connexion entrante de websockify de bout en bout — comme le
     ferait un vrai client VNC (vncviewer, AVNC...): sonde ce que le vrai
     serveur propose et s'adapte, sans configuration préalable à faire sur

@@ -66,3 +66,9 @@ TLS_SELFSIGNED = os.environ.get("BASTION_TLS_SELFSIGNED", "").strip().lower() in
 # SQLite) : une fois modifiée depuis l'interface, c'est cette valeur-là qui
 # fait foi, cette variable d'env n'est alors plus relue.
 HISTORY_RETENTION_DAYS_DEFAULT = int(os.environ.get("BASTION_HISTORY_RETENTION_DAYS", "30"))
+
+# Notification (voir notifications.py) envoyée par monitor.py quand une
+# machine change d'état (up<->down) — webhook générique (Slack/Discord/
+# Mattermost...), vide par défaut (désactivé). Un seul type de webhook à
+# gérer plutôt qu'une intégration par service : voir notifications.send().
+NOTIFY_WEBHOOK_URL = os.environ.get("BASTION_NOTIFY_WEBHOOK_URL", "").strip()

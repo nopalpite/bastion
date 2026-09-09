@@ -1183,3 +1183,38 @@ body.modal-open {
   .discovery-head { display: none; }
 }
 
+/* page /sessions (journal des connexions, voir history.py) ------------ */
+
+.sessions-table {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.sessions-row {
+  display: grid;
+  grid-template-columns: 1fr 90px 130px 160px 100px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.sessions-row:last-child { border-bottom: none; }
+.sessions-head {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  background: var(--bg-raised);
+}
+.protocol-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+@media (max-width: 640px) {
+  .sessions-row { grid-template-columns: 1fr; row-gap: 4px; }
+  .sessions-head { display: none; }
+}
+

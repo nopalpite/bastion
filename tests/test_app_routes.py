@@ -5,6 +5,7 @@ Importer `app` déclenche eventlet.monkey_patch() (fait en tête de app.py,
 avant tout le reste, voir son commentaire) pour tout le process pytest.
 Sans effet sur ces tests, mais à garder en tête si des tests ajoutés plus
 tard se comportent bizarrement avec le threading/les sockets standard."""
+import io
 import time
 
 import pytest
@@ -229,3 +230,101 @@ def test_discover_marks_already_inventoried_hosts(client, monkeypatch):
     resp = client.post("/discover", data={"cidr": "10.0.0.0/29"})
 
     assert "Déjà dans l'inventaire" in resp.get_data(as_text=True)
+
+
+# --- /sessions: journal des connexions (voir history.py) ---------------
+
+def test_sessions_page_requires_login(client):
+    resp = client.get("/sessions")
+    assert resp.status_code == 302
+
+
+def test_sessions_page_shows_recent_sessions(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+    session_id = history.start_session("serveur-test", "ssh", source_ip="10.0.0.9")
+    history.end_session(session_id)
+
+    resp = client.get("/sessions")
+
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Serveur Test" in body
+    assert "SSH" in body
+    assert "10.0.0.9" in body
+
+
+def test_sessions_page_shows_open_session_as_in_progress(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    history.start_session("unknown-machine", "vnc")
+
+    resp = client.get("/sessions")
+
+    assert "en cours" in resp.get_data(as_text=True)
+
+
+# --- Export / import de l'inventaire ------------------------------------
+
+def test_export_hosts_requires_login(client):
+    resp = client.get("/hosts/export")
+    assert resp.status_code == 302
+
+
+def test_export_hosts_returns_machines_yaml(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    resp = client.get("/hosts/export")
+
+    assert resp.status_code == 200
+    assert "serveur-test" in resp.get_data(as_text=True)
+    assert "attachment" in resp.headers.get("Content-Disposition", "")
+
+
+def test_import_hosts_requires_login(client):
+    resp = client.get("/hosts/import")
+    assert resp.status_code == 302
+
+
+def test_import_hosts_replaces_inventory(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Ancien", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+    new_yaml = (
+        b"rooms: []\n"
+        b"machines:\n"
+        b"  - id: nouveau\n"
+        b"    name: Nouveau\n"
+        b"    os: linux\n"
+        b"    host: 10.0.0.9\n"
+        b"    ssh_port: 22\n"
+    )
+
+    resp = client.post(
+        "/hosts/import",
+        data={"import_file": (io.BytesIO(new_yaml), "machines.yaml")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert store.get_machine("nouveau") is not None
+    assert store.get_machine("ancien") is None
+
+
+def test_import_hosts_shows_error_on_invalid_file(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post(
+        "/hosts/import",
+        data={"import_file": (io.BytesIO(b"pas de la config valide"), "machines.yaml")},
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 200
+    assert "Structure invalide" in resp.get_data(as_text=True)

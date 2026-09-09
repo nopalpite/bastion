@@ -3,6 +3,8 @@
 projet."""
 import os
 
+import pytest
+
 import gen_vnc_tokens
 import store
 
@@ -233,3 +235,64 @@ def test_update_machine_removing_vnc_regenerates_tokens_file(machines_file):
         machine_id, name="Serveur", os_type="linux", host="10.0.0.1", vnc_port=None,
     )
     assert machine_id not in _tokens_file_content()
+
+
+# --- import_machines_yaml: remplace tout l'inventaire (page /hosts/import) ---
+
+def test_import_machines_yaml_replaces_inventory(machines_file):
+    store.add_machine(name="Ancien", os_type="linux", host="10.0.0.1")
+
+    store.import_machines_yaml(
+        "rooms: []\n"
+        "machines:\n"
+        "  - id: nouveau\n"
+        "    name: Nouveau\n"
+        "    os: linux\n"
+        "    host: 10.0.0.9\n"
+        "    ssh_port: 22\n"
+    )
+
+    machines = store.load_machines()
+    assert [m["id"] for m in machines] == ["nouveau"]
+
+
+def test_import_machines_yaml_writes_backup_of_previous_file(machines_file):
+    store.add_machine(name="Ancien", os_type="linux", host="10.0.0.1")
+    original_content = machines_file.read_text(encoding="utf-8")
+
+    store.import_machines_yaml("rooms: []\nmachines: []\n")
+
+    backup_path = str(machines_file) + ".bak"
+    assert os.path.exists(backup_path)
+    with open(backup_path, encoding="utf-8") as f:
+        assert f.read() == original_content
+
+
+def test_import_machines_yaml_regenerates_tokens_file(machines_file):
+    store.import_machines_yaml(
+        "rooms: []\n"
+        "machines:\n"
+        "  - id: nouveau\n"
+        "    name: Nouveau\n"
+        "    os: linux\n"
+        "    host: 10.0.0.9\n"
+        "    vnc_port: 5900\n"
+        "    vnc_bridge_port: 6100\n"
+    )
+
+    assert "nouveau: 127.0.0.1:6100" in _tokens_file_content()
+
+
+def test_import_machines_yaml_rejects_invalid_yaml(machines_file):
+    with pytest.raises(store.InventoryImportError, match="YAML invalide"):
+        store.import_machines_yaml("rooms: [\nmachines: [")
+
+
+def test_import_machines_yaml_rejects_missing_keys(machines_file):
+    with pytest.raises(store.InventoryImportError, match="Structure invalide"):
+        store.import_machines_yaml("foo: bar\n")
+
+
+def test_import_machines_yaml_rejects_wrong_types(machines_file):
+    with pytest.raises(store.InventoryImportError, match="listes"):
+        store.import_machines_yaml("rooms: {}\nmachines: {}\n")

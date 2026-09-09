@@ -12,6 +12,9 @@ certificat, relais bidirectionnel) est vérifiée séparément par un harnais
 avec un faux serveur VeNCrypt local (voir la conversation/PR associée) —
 pas reproduite ici pour garder cette suite rapide et sans réseau ni
 threads ni certificats à générer à chaque run."""
+import pytest
+
+import history
 import vnc_tls_bridge as bridge
 
 
@@ -148,3 +151,46 @@ def test_probe_available_never_chooses_a_security_type(monkeypatch):
     monkeypatch.setattr(bridge, "_probe", lambda machine, timeout: (fake_sock, b"", b"", b"", [2]))
     bridge.probe_available({"host": "10.0.0.1", "vnc_port": 5900})
     assert called == []
+
+
+# --- bridge_connection: enregistre la session dans l'historique (voir
+# history.py, page /sessions) autour de _bridge_connection_inner, sans
+# toucher à sa logique interne (plusieurs sorties anticipées) ----------
+
+def test_bridge_connection_records_a_session(monkeypatch, history_db):
+    monkeypatch.setattr(bridge, "_bridge_connection_inner", lambda *a: None)
+
+    bridge.bridge_connection(_FakeSock(), {"id": "m1"}, pin_certificate=None)
+
+    sessions = history.get_recent_sessions()
+    assert len(sessions) == 1
+    assert sessions[0]["machine_id"] == "m1"
+    assert sessions[0]["protocol"] == "vnc"
+    assert sessions[0]["source_ip"] is None
+    # déjà close: _bridge_connection_inner (monkeypatché) est revenu tout de suite
+    assert sessions[0]["ended_at"] is not None
+
+
+def test_bridge_connection_ends_session_even_if_inner_raises(monkeypatch, history_db):
+    def boom(*a):
+        raise OSError("connexion perdue")
+
+    monkeypatch.setattr(bridge, "_bridge_connection_inner", boom)
+
+    with pytest.raises(OSError):
+        bridge.bridge_connection(_FakeSock(), {"id": "m1"}, pin_certificate=None)
+
+    assert history.get_recent_sessions()[0]["ended_at"] is not None
+
+
+def test_bridge_connection_still_bridges_when_session_recording_fails(monkeypatch, history_db):
+    calls = []
+    monkeypatch.setattr(bridge, "_bridge_connection_inner", lambda *a: calls.append(a))
+    monkeypatch.setattr(
+        history, "start_session",
+        lambda *a, **k: (_ for _ in ()).throw(OSError("disque plein")),
+    )
+
+    bridge.bridge_connection(_FakeSock(), {"id": "m1"}, pin_certificate=None)
+
+    assert len(calls) == 1  # le pont a bien tourné malgré l'échec d'enregistrement

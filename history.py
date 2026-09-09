@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    machine_id TEXT NOT NULL,
+    protocol TEXT NOT NULL,
+    source_ip TEXT,
+    started_at REAL NOT NULL,
+    ended_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
 """
 
 
@@ -75,15 +85,18 @@ def set_retention_days(days):
 
 
 def purge_old_entries(retention_days=None):
-    """Supprime les enregistrements plus vieux que la rétention configurée
-    (ou explicitement fournie) et retourne le nombre de lignes supprimées
-    — utilisée à la fois par la purge périodique automatique (monitor.py)
-    et le bouton "Purger maintenant" de la page /stats."""
+    """Supprime les enregistrements (vérifications ET sessions, même
+    rétention pour les deux plutôt qu'un second réglage séparé) plus
+    vieux que la rétention configurée (ou explicitement fournie), et
+    retourne le nombre total de lignes supprimées — utilisée à la fois
+    par la purge périodique automatique (monitor.py) et le bouton
+    "Purger maintenant" de la page /stats."""
     days = retention_days if retention_days is not None else get_retention_days()
     cutoff = time.time() - days * 86400
     with _connect() as conn:
-        cursor = conn.execute("DELETE FROM checks WHERE checked_at < ?", (cutoff,))
-        return cursor.rowcount
+        checks_cursor = conn.execute("DELETE FROM checks WHERE checked_at < ?", (cutoff,))
+        sessions_cursor = conn.execute("DELETE FROM sessions WHERE started_at < ?", (cutoff,))
+        return checks_cursor.rowcount + sessions_cursor.rowcount
 
 
 def get_uptime_percentage(machine_id, since_seconds):
@@ -178,3 +191,47 @@ def get_latency_timeline(machine_id, since_seconds, buckets=60):
         else:
             timeline.append(None)
     return timeline
+
+
+def start_session(machine_id, protocol, source_ip=None):
+    """Enregistre le début d'une session (SSH ou VNC, voir ssh_ws.py et
+    vnc_tls_bridge.py) et retourne son id, à repasser à end_session() une
+    fois la connexion terminée — pour le journal des connexions de la
+    page /sessions. source_ip vient de request.remote_addr côté SSH
+    (connexion WebSocket directe) ; côté VNC, le pont ne voit que
+    l'adresse locale de websockify (127.0.0.1), pas le vrai client
+    distant — laissé à None dans ce cas plutôt que d'afficher une IP
+    trompeuse."""
+    with _connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO sessions (machine_id, protocol, source_ip, started_at) "
+            "VALUES (?, ?, ?, ?)",
+            (machine_id, protocol, source_ip, time.time()),
+        )
+        return cursor.lastrowid
+
+
+def end_session(session_id):
+    if session_id is None:
+        return
+    with _connect() as conn:
+        conn.execute("UPDATE sessions SET ended_at = ? WHERE id = ?", (time.time(), session_id))
+
+
+def get_recent_sessions(limit=200):
+    """Retourne les sessions les plus récentes (les plus récentes en
+    premier) pour la page /sessions — une session sans ended_at est
+    encore ouverte (voir le rendu du template)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, machine_id, protocol, source_ip, started_at, ended_at "
+            "FROM sessions ORDER BY started_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [
+        {
+            "id": r[0], "machine_id": r[1], "protocol": r[2], "source_ip": r[3],
+            "started_at": r[4], "ended_at": r[5],
+        }
+        for r in rows
+    ]
