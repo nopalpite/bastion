@@ -290,7 +290,7 @@ def discover():
 @login_required
 def export_hosts():
     return send_file(
-        config.MACHINES_FILE, as_attachment=True,
+        store.MACHINES_FILE, as_attachment=True,
         download_name="machines.yaml", mimetype="application/x-yaml",
     )
 
