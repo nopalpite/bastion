@@ -284,6 +284,39 @@ def discover():
     )
 
 
+@app.route("/hosts/bulk-add", methods=["POST"])
+@login_required
+def bulk_add_hosts():
+    """Ajoute d'un coup les lignes cochées sur /discover, avec le hostname
+    comme nom et les valeurs détectées (SSH/VNC) comme dans le lien
+    "+ Ajouter" individuel — sans repasser par host_form.html, à la
+    demande explicite de l'utilisateur pour ajouter plusieurs machines
+    trouvées d'un coup. Les champs sont indexés (host_0, host_1, ...)
+    plutôt qu'en listes, car seules les cases cochées sont soumises par le
+    navigateur: une liste par champ perdrait la correspondance entre une
+    ligne décochée et les autres (voir discover.html)."""
+    os_type = request.form.get("os_type")
+    if os_type not in ("linux", "windows"):
+        os_type = "linux"
+    count = request.form.get("count", type=int) or 0
+
+    added = 0
+    for i in range(count):
+        if not request.form.get(f"select_{i}"):
+            continue
+        host = request.form.get(f"host_{i}", "").strip()
+        if not host:
+            continue
+        name = request.form.get(f"name_{i}", "").strip() or host
+        vnc_port = request.form.get(f"vnc_{i}") or None
+        store.add_machine(name=name, os_type=os_type, host=host, vnc_port=vnc_port)
+        added += 1
+
+    if added:
+        return redirect(url_for("dashboard", bulk_added=added))
+    return redirect(url_for("dashboard"))
+
+
 # --- Export / import de l'inventaire (sauvegarde, migration) -----------
 
 @app.route("/hosts/export")

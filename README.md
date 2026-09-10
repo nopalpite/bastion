@@ -92,7 +92,12 @@ si le découpage réel du réseau diffère, pas une détection garantie exacte.
 Chaque machine trouvée est proposée avec un bouton **+ Ajouter** qui
 préremplit le formulaire d'hôte (adresse, nom d'hôte, ports détectés) —
 sauf si son adresse est déjà dans l'inventaire, auquel cas c'est indiqué
-à la place.
+à la place. Pour ajouter plusieurs machines d'un coup, cochez celles
+voulues (case "tout cocher" disponible) puis **Ajouter la sélection** :
+chacune est créée directement avec son nom d'hôte comme nom, les ports
+détectés, et le système choisi dans la liste déroulante (appliqué à
+toute la sélection — à corriger machine par machine ensuite si le parc
+est mixte Linux/Windows).
 
 **Résolution du nom d'hôte (mDNS d'abord, DNS classique en repli)** : le
 DNS/DHCP du routeur n'a souvent qu'un nom générique attribué automatique-
@@ -104,7 +109,9 @@ brute sur UDP 5353 (RFC 6762, implémentée à la main dans `discovery.py`
 plutôt que d'ajouter une dépendance comme `zeroconf` — même esprit que le
 protocole RFB dans `vnc_tls_bridge.py`) ; le DNS classique
 (`socket.gethostbyaddr`) ne sert que de repli si l'appareil ne répond pas
-(mDNS désactivé, Windows sans Bonjour...).
+(mDNS désactivé, Windows sans Bonjour...). Le suffixe `.local` que ces
+noms mDNS portent systématiquement (détail du protocole, RFC 6762 §3)
+est retiré avant affichage/préremplissage.
 
 ## Pont VNC générique (`vnc_tls_bridge.py`)
 

@@ -202,13 +202,23 @@ def _mdns_reverse_lookup(ip, timeout=_MDNS_TIMEOUT):
     return _parse_ptr_response(data)
 
 
+def _strip_local_suffix(hostname):
+    """Les noms mDNS (RFC 6762 §3) se terminent systématiquement par
+    ".local" — un détail du protocole, pas une information utile pour
+    nommer la machine dans l'inventaire, donc retiré ici plutôt que de le
+    laisser fuiter jusqu'au nom pré-rempli dans le formulaire d'ajout."""
+    if hostname and hostname.lower().endswith(".local"):
+        return hostname[: -len(".local")]
+    return hostname
+
+
 def _reverse_dns(ip):
     hostname = _mdns_reverse_lookup(ip)
     if hostname:
-        return hostname
+        return _strip_local_suffix(hostname)
     try:
         hostname, _aliases, _addrs = socket.gethostbyaddr(ip)
-        return hostname
+        return _strip_local_suffix(hostname)
     except (socket.herror, socket.gaierror, OSError):
         return None
 

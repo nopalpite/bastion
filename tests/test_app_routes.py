@@ -217,6 +217,67 @@ def test_discover_post_shows_error_on_invalid_range(client, monkeypatch):
     assert "Plage trop grande" in resp.get_data(as_text=True)
 
 
+def test_bulk_add_hosts_requires_login(client):
+    resp = client.post("/hosts/bulk-add", data={"count": "1", "select_0": "on"})
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_bulk_add_hosts_creates_only_checked_rows(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post("/hosts/bulk-add", data={
+        "count": "2",
+        "select_0": "on",
+        "host_0": "10.0.0.5", "name_0": "srv-discovered", "vnc_0": "",
+        # ligne 1 non cochée: pas de select_1, ne doit pas être ajoutée
+        "host_1": "10.0.0.6", "name_1": "srv-other", "vnc_1": "",
+        "os_type": "linux",
+    })
+
+    assert resp.status_code == 302
+    assert "bulk_added=1" in resp.headers["Location"]
+    assert store.get_machine("srv-discovered") is not None
+    assert store.get_machine("srv-other") is None
+
+
+def test_bulk_add_hosts_falls_back_to_ip_when_no_hostname(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    client.post("/hosts/bulk-add", data={
+        "count": "1", "select_0": "on",
+        "host_0": "10.0.0.5", "name_0": "", "vnc_0": "",
+        "os_type": "linux",
+    })
+
+    machine = store.get_machine("10-0-0-5")
+    assert machine is not None
+    assert machine["host"] == "10.0.0.5"
+
+
+def test_bulk_add_hosts_applies_selected_os_and_vnc_port(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    client.post("/hosts/bulk-add", data={
+        "count": "1", "select_0": "on",
+        "host_0": "10.0.0.5", "name_0": "srv-win", "vnc_0": "5901",
+        "os_type": "windows",
+    })
+
+    machine = store.get_machine("srv-win")
+    assert machine["os"] == "windows"
+    assert machine["vnc_port"] == 5901
+
+
+def test_bulk_add_hosts_redirects_without_bulk_added_when_nothing_selected(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post("/hosts/bulk-add", data={"count": "1", "host_0": "10.0.0.5"})
+
+    assert resp.status_code == 302
+    assert "bulk_added" not in resp.headers["Location"]
+
+
 def test_discover_marks_already_inventoried_hosts(client, monkeypatch):
     client.post("/login", data={"username": "admin", "password": "admin"})
     client.post("/hosts/new", data={

@@ -34,8 +34,11 @@
 {% if not results %}
 <p class="hint-box">Aucune machine n'a répondu sur cette plage.</p>
 {% else %}
+<form method="post" action="{{ url_for('bulk_add_hosts') }}" id="bulk-add-form">
+<input type="hidden" name="count" value="{{ results|length }}">
 <div class="discovery-table">
   <div class="discovery-row discovery-head">
+    <span><input type="checkbox" id="select-all-hosts"></span>
     <span>IP</span>
     <span>Nom d'hôte</span>
     <span>SSH</span>
@@ -44,6 +47,14 @@
   </div>
   {% for host in results %}
   <div class="discovery-row">
+    <span>
+      {% if host.ip not in existing_hosts %}
+      <input type="checkbox" name="select_{{ loop.index0 }}" class="row-select-host">
+      <input type="hidden" name="host_{{ loop.index0 }}" value="{{ host.ip }}">
+      <input type="hidden" name="name_{{ loop.index0 }}" value="{{ host.hostname or host.ip }}">
+      <input type="hidden" name="vnc_{{ loop.index0 }}" value="{{ host.vnc_port or '' }}">
+      {% endif %}
+    </span>
     <span class="mono">{{ host.ip }}</span>
     <span>{{ host.hostname or "—" }}</span>
     <span class="svc-badge {{ 'ok' if host.ssh else 'ko' }}">SSH</span>
@@ -58,8 +69,37 @@
   </div>
   {% endfor %}
 </div>
+
+<div class="form-actions bulk-add-actions">
+  <label for="bulk-os-type">Système (pour toute la sélection)</label>
+  <select id="bulk-os-type" name="os_type">
+    <option value="linux">Linux</option>
+    <option value="windows">Windows</option>
+  </select>
+  <button class="btn primary" type="submit" id="bulk-add-btn">Ajouter la sélection</button>
+</div>
+</form>
 {% endif %}
 {% endif %}
+
+<script>
+  (function () {
+    const selectAll = document.getElementById("select-all-hosts");
+    if (!selectAll) return;
+    const rowChecks = document.querySelectorAll(".row-select-host");
+    selectAll.addEventListener("change", () => {
+      rowChecks.forEach((cb) => { cb.checked = selectAll.checked; });
+    });
+
+    document.getElementById("bulk-add-form").addEventListener("submit", (e) => {
+      const anyChecked = Array.from(rowChecks).some((cb) => cb.checked);
+      if (!anyChecked) {
+        e.preventDefault();
+        alert("Cochez au moins une machine à ajouter.");
+      }
+    });
+  })();
+</script>
 
 <script>
   document.getElementById("discover-form").addEventListener("submit", () => {

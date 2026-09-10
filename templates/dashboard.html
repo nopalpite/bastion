@@ -22,6 +22,10 @@
 <p class="hint-box">Inventaire importé avec succès.</p>
 {% endif %}
 
+{% if request.args.get('bulk_added') %}
+<p class="hint-box">{{ request.args.get('bulk_added') }} machine(s) ajoutée(s) depuis la découverte réseau.</p>
+{% endif %}
+
 {% if total_count %}
 <div class="dashboard-search">
   <input type="search" id="machine-search" placeholder="Rechercher (nom, hôte, OS)…">

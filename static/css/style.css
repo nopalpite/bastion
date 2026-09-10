@@ -1163,7 +1163,7 @@ body.modal-open {
 }
 .discovery-row {
   display: grid;
-  grid-template-columns: 140px 1fr 70px 70px 120px;
+  grid-template-columns: 24px 140px 1fr 70px 70px 120px;
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
@@ -1177,6 +1177,19 @@ body.modal-open {
   letter-spacing: 0.06em;
   color: var(--text-dim);
   background: var(--bg-raised);
+}
+.bulk-add-actions { padding: 14px; }
+.bulk-add-actions label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-right: -4px;
+}
+.bulk-add-actions select {
+  padding: 6px 8px;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 @media (max-width: 640px) {
   .discovery-row { grid-template-columns: 1fr; row-gap: 4px; }

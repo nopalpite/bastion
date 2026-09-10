@@ -270,7 +270,9 @@ def test_reverse_dns_prefers_mdns_over_router_dns(monkeypatch):
     )
     monkeypatch.setattr(discovery.socket, "gethostbyaddr", _must_not_be_called)
 
-    assert discovery._reverse_dns("192.168.1.20") == "rpi-3-bureau.local"
+    # Le ".local" (systématique en mDNS, RFC 6762 §3) est retiré: pas
+    # d'intérêt pour l'utilisateur, voir _strip_local_suffix.
+    assert discovery._reverse_dns("192.168.1.20") == "rpi-3-bureau"
 
 
 def test_reverse_dns_falls_back_to_router_dns_when_mdns_silent(monkeypatch):
@@ -278,3 +280,31 @@ def test_reverse_dns_falls_back_to_router_dns_when_mdns_silent(monkeypatch):
     monkeypatch.setattr(discovery.socket, "gethostbyaddr", lambda ip: ("ah-ade980", [], [ip]))
 
     assert discovery._reverse_dns("192.168.1.20") == "ah-ade980"
+
+
+# --- _strip_local_suffix: le ".local" mDNS est un détail de protocole, pas
+# une info utile à afficher/préremplir dans l'inventaire ------------------
+
+def test_strip_local_suffix_removes_trailing_local():
+    assert discovery._strip_local_suffix("rpi-3-bureau.local") == "rpi-3-bureau"
+
+
+def test_strip_local_suffix_is_case_insensitive():
+    assert discovery._strip_local_suffix("rpi-3-bureau.LOCAL") == "rpi-3-bureau"
+
+
+def test_strip_local_suffix_leaves_other_names_untouched():
+    assert discovery._strip_local_suffix("ah-ade980") == "ah-ade980"
+
+
+def test_strip_local_suffix_passes_through_none():
+    assert discovery._strip_local_suffix(None) is None
+
+
+def test_reverse_dns_strips_local_suffix_from_router_dns_too(monkeypatch):
+    # Rare mais possible (résolveur DNS local configuré avec un domaine
+    # ".local") -- la même règle s'applique quelle que soit la source.
+    monkeypatch.setattr(discovery, "_mdns_reverse_lookup", lambda ip, timeout=None: None)
+    monkeypatch.setattr(discovery.socket, "gethostbyaddr", lambda ip: ("srv.local", [], [ip]))
+
+    assert discovery._reverse_dns("192.168.1.20") == "srv"
