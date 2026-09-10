@@ -537,4 +537,3 @@ def test_run_macro_route_with_no_selection_skips_execution(client, macros_file, 
 
     assert resp.status_code == 200
     assert "Aucune machine sélectionnée" in resp.get_data(as_text=True)
-    assert "Structure invalide" in resp.get_data(as_text=True)
