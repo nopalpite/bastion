@@ -25,6 +25,8 @@ import store
 import credentials
 import discovery
 import history
+import macro_runner
+import macro_store
 import tls
 from map_image import DEFAULT_MAP_RATIO, get_image_size, validate_map_image
 from monitor import start_background_monitor, get_status_snapshot
@@ -598,6 +600,93 @@ def api_machine_status(machine_id):
     if not machine:
         abort(404)
     return jsonify({"has_stored_creds": store.has_stored_credentials(machine)})
+
+
+# --- Macros (commande SSH prédéfinie lancée sur un pool de machines) ---
+
+@app.route("/macros")
+@login_required
+def macros_list():
+    return render_template("macros.html", macros=macro_store.load_macros())
+
+
+@app.route("/macros/new", methods=["GET", "POST"])
+@login_required
+def new_macro():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        command = request.form.get("command", "").strip()
+        if not name or not command:
+            return render_template(
+                "macro_form.html", macro=None,
+                error="Nom et commande sont obligatoires.",
+            )
+        macro_store.add_macro(name, command)
+        return redirect(url_for("macros_list"))
+
+    return render_template("macro_form.html", macro=None, error=None)
+
+
+@app.route("/macros/<macro_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_macro(macro_id):
+    macro = macro_store.get_macro(macro_id)
+    if not macro:
+        abort(404)
+
+    if request.method == "POST":
+        if request.form.get("delete") == "1":
+            macro_store.delete_macro(macro_id)
+            return redirect(url_for("macros_list"))
+
+        name = request.form.get("name", "").strip()
+        command = request.form.get("command", "").strip()
+        if not name or not command:
+            return render_template(
+                "macro_form.html", macro=macro,
+                error="Nom et commande sont obligatoires.",
+            )
+        macro_store.update_macro(macro_id, name, command)
+        return redirect(url_for("macros_list"))
+
+    return render_template("macro_form.html", macro=macro, error=None)
+
+
+def _machine_groups_for_pool_selection():
+    """Regroupe les machines par salle (+ un groupe "sans salle") pour
+    l'écran de sélection du pool — même motif que dashboard(), en
+    omettant les salles vides (juste du bruit ici, contrairement au
+    dashboard où la structure complète a un intérêt de navigation)."""
+    machines = store.load_machines()
+    groups = []
+    for room in store.load_rooms():
+        room_machines = [m for m in machines if m.get("room") == room["id"]]
+        if room_machines:
+            groups.append({"room": room, "machines": room_machines})
+    unassigned = [m for m in machines if not m.get("room")]
+    if unassigned:
+        groups.append({"room": None, "machines": unassigned})
+    return groups
+
+
+@app.route("/macros/<macro_id>/run", methods=["GET", "POST"])
+@login_required
+def run_macro(macro_id):
+    macro = macro_store.get_macro(macro_id)
+    if not macro:
+        abort(404)
+
+    results = None
+    if request.method == "POST":
+        selected_ids = set(request.form.getlist("machine_id"))
+        machines = [m for m in store.load_machines() if m["id"] in selected_ids]
+        results = macro_runner.run_macro(macro["command"], machines) if machines else []
+
+    creds_by_id = {m["id"]: store.has_stored_credentials(m) for m in store.load_machines()}
+    return render_template(
+        "macro_run.html", macro=macro, groups=_machine_groups_for_pool_selection(),
+        creds_by_id=creds_by_id, results=results,
+    )
 
 
 if __name__ == "__main__":

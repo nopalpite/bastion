@@ -285,7 +285,7 @@ body.page-map .container { max-width: none; }
   color: var(--text-dim);
   margin-bottom: 6px;
 }
-.field input {
+.field input, .field textarea {
   width: 100%;
   padding: 9px 10px;
   background: var(--bg);
@@ -295,7 +295,8 @@ body.page-map .container { max-width: none; }
   font-family: var(--font-mono);
   font-size: 13px;
 }
-.field input:focus { outline: none; border-color: var(--accent); }
+.field textarea { resize: vertical; min-height: 90px; }
+.field input:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
 .login-box button {
   width: 100%;
   margin-top: 6px;
@@ -1229,5 +1230,54 @@ body.modal-open {
 @media (max-width: 640px) {
   .sessions-row { grid-template-columns: 1fr; row-gap: 4px; }
   .sessions-head { display: none; }
+}
+
+/* page /macros (exécution de commandes SSH sur un pool, voir
+   macro_runner.py) ------------------------------------------------------ */
+
+.macros-row { grid-template-columns: 1fr 2fr 140px; }
+.macro-command-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.macros-actions { display: flex; gap: 6px; justify-content: flex-end; }
+@media (max-width: 640px) {
+  .macros-row { grid-template-columns: 1fr; }
+}
+
+.macro-pool-list { display: flex; flex-direction: column; gap: 2px; }
+.macro-pool-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.macro-pool-row:hover { background: var(--bg-raised); }
+.macro-pool-name { font-weight: 500; }
+
+.macro-results { display: flex; flex-direction: column; gap: 10px; }
+.macro-result {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.macro-result-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-raised);
+}
+.macro-result-output {
+  margin: 0;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 

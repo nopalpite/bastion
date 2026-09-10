@@ -9,6 +9,7 @@ from cryptography.fernet import Fernet
 
 import gen_vnc_tokens
 import history
+import macro_store
 import store
 
 
@@ -31,6 +32,17 @@ def machines_file(tmp_path, monkeypatch):
     path.write_text("rooms: []\nmachines: []\n", encoding="utf-8")
     monkeypatch.setattr(store, "MACHINES_FILE", str(path))
     monkeypatch.setattr(gen_vnc_tokens, "TOKENS_FILE", str(tmp_path / "vnc_tokens.conf"))
+    return path
+
+
+@pytest.fixture
+def macros_file(tmp_path, monkeypatch):
+    """Redirige macro_store.py vers un macros.yaml temporaire pour chaque
+    test, même raison que machines_file ci-dessus (macro_store.py fait
+    "from config import MACROS_FILE", copié à l'import — patcher
+    config.MACROS_FILE après coup n'aurait aucun effet)."""
+    path = tmp_path / "macros.yaml"
+    monkeypatch.setattr(macro_store, "MACROS_FILE", str(path))
     return path
 
 

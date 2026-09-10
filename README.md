@@ -29,6 +29,7 @@ dépendance lourde. Facile à lire, facile à étendre.
 - **Notifications** (optionnel) : webhook (Slack/Discord/Mattermost...) envoyé quand une machine passe up↔down — voir la section dédiée plus bas.
 - **Journal des connexions** (`/sessions`) : qui s'est connecté à quelle machine, quand, par quel protocole (SSH/VNC) — voir la section dédiée plus bas.
 - **Export / import de l'inventaire** (`+ Hôte` → `Exporter`/`Importer`) : sauvegarde ou migration de `machines.yaml` depuis l'interface.
+- **Macros** (`/macros`) : bibliothèque de commandes SSH réutilisables, exécutables en un clic sur un pool de machines choisi dans l'interface — voir la section dédiée plus bas.
 - **Épinglage de la clé d'hôte SSH (TOFU)** : la première connexion à une machine mémorise sa clé publique ; si elle change ensuite, la connexion est bloquée avec une alerte explicite.
 - **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion.
 
@@ -208,11 +209,13 @@ bastion/
   ssh_client.py            connexion SSH avec épinglage de la clé d'hôte (TOFU)
   sftp_ws.py               navigateur de fichiers (colonne latérale du terminal)
   ssh_actions.py           actions ponctuelles (reboot/shutdown) via SSH
+  macro_store.py           bibliothèque de macros (macros.yaml)
+  macro_runner.py          exécution d'une macro sur un pool de machines
   gen_vnc_tokens.py        génère le fichier de tokens pour websockify (VNC uniquement)
   vnc_tls_bridge.py        pont VNC générique (relais transparent, ou VeNCrypt/TLS si besoin)
   debug_vnc_security.py    diagnostic RFB autonome (types de sécurité VNC)
   machines.yaml           inventaire: salles + machines
-  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc, stats, discover)
+  templates/               pages Jinja2 (dashboard, plan, formulaires, terminal, vnc, stats, discover, macros)
   static/css/            style.css (thème console sombre)
   static/js/              dashboard.js, terminal.js, sftp.js, map.js, actions.js, stats.js
   static/uploads/maps/    images de plan uploadées
@@ -403,6 +406,35 @@ Deux boutons sur le dashboard (à côté de `+ Hôte`) :
   l'écrasement — une seule génération de secours, pas un historique
   complet, mais de quoi revenir en arrière après un import malencontreux.
 
+## Macros (`/macros`, `macro_store.py`, `macro_runner.py`)
+
+Bibliothèque de commandes SSH réutilisables (`macros.yaml`, même
+conception volontairement simple que `machines.yaml`), lancées en un
+clic sur un pool de machines choisi dans l'interface plutôt que de
+répéter la même commande à la main, machine par machine.
+
+- **Cocher un pool** : depuis l'écran de lancement d'une macro, cochez
+  les machines voulues (case "Tout cocher" par salle, ou une par une).
+- **Exécution** : la commande est envoyée **telle quelle** via SSH
+  (`exec_command`, pas de terminal interactif) à chaque machine cochée,
+  en parallèle borné (16 connexions simultanées maximum). **Pas de
+  gestion sudo automatique** (contrairement aux actions redémarrer/
+  éteindre du dashboard, voir `ssh_actions.py`) et **pas d'adaptation
+  selon l'OS** : si votre parc est mixte Linux/Windows, prévoyez des
+  macros séparées.
+- **Identifiants** : uniquement ceux déjà mémorisés pour chaque machine
+  (voir "Identifiants mémorisés" plus haut) — avec potentiellement des
+  dizaines de machines dans un pool, souvent avec des mots de passe
+  différents, un formulaire "un seul mot de passe pour tout le pool"
+  n'aurait pas de sens. Une machine sans identifiants mémorisés est
+  simplement signalée en échec dans les résultats, sans bloquer les
+  autres.
+- **Résultats** : succès/échec + sortie (stdout+stderr) affichés par
+  machine juste après le lancement. Si la clé d'hôte d'une machine a
+  changé entre-temps, cette machine échoue avec un message renvoyant
+  vers le terminal SSH pour vérifier/confirmer la nouvelle clé — une
+  macro ne peut pas se substituer à cette confirmation explicite.
+
 ## Configuration
 
 Éditez `machines.yaml` pour déclarer vos machines, ou passez par
@@ -499,9 +531,9 @@ services:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement — voir la note
       # ci-dessous. C'est aussi là qu'un certificat TLS auto-signé
-      # (BASTION_TLS_SELFSIGNED ci-dessus) et l'historique de
-      # disponibilité (history.db) sont stockés, pour persister au
-      # rebuild.
+      # (BASTION_TLS_SELFSIGNED ci-dessus), l'historique de disponibilité
+      # (history.db) et la bibliothèque de macros (macros.yaml) sont
+      # stockés, pour persister au rebuild.
       - ./config:/app/config
       # Persister les plans de salle uploadés (sinon perdus au rebuild)
       - ./data/maps:/app/static/uploads/maps

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Macros — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Macros</div>
+  <div class="page-actions">
+    <a class="btn primary" href="{{ url_for('new_macro') }}">+ Macro</a>
+  </div>
+</div>
+
+<p class="hint-box">
+  Une macro est une commande shell exécutée telle quelle via SSH sur les
+  machines cochées lors du lancement — pas de gestion sudo automatique,
+  pas d'adaptation selon l'OS (prévoyez des macros séparées Linux/Windows
+  si besoin). Seules les machines avec des identifiants SSH mémorisés
+  peuvent être ciblées.
+</p>
+
+{% if not macros %}
+<p class="empty-state">Aucune macro pour l'instant. <a href="{{ url_for('new_macro') }}">Créez-en une</a>.</p>
+{% else %}
+<div class="discovery-table">
+  <div class="discovery-row macros-row discovery-head">
+    <span>Nom</span>
+    <span>Commande</span>
+    <span></span>
+  </div>
+  {% for macro in macros %}
+  <div class="discovery-row macros-row">
+    <span>{{ macro.name }}</span>
+    <span class="mono macro-command-preview">{{ macro.command }}</span>
+    <span class="macros-actions">
+      <a class="btn small primary" href="{{ url_for('run_macro', macro_id=macro.id) }}">Lancer</a>
+      <a class="btn small" href="{{ url_for('edit_macro', macro_id=macro.id) }}">Éditer</a>
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

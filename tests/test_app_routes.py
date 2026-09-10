@@ -13,6 +13,8 @@ import pytest
 import app as app_module
 import discovery
 import history
+import macro_runner
+import macro_store
 import store
 
 
@@ -388,4 +390,151 @@ def test_import_hosts_shows_error_on_invalid_file(client):
     )
 
     assert resp.status_code == 200
+    assert "Structure invalide" in resp.get_data(as_text=True)
+
+
+# --- Macros (exécution SSH sur un pool de machines, voir macro_runner.py)
+
+def test_macros_list_requires_login(client, macros_file):
+    resp = client.get("/macros")
+    assert resp.status_code == 302
+
+
+def test_macros_list_shows_existing_macros(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    macro_store.add_macro("Uptime", "uptime")
+
+    resp = client.get("/macros")
+
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Uptime" in body
+    assert "uptime" in body
+
+
+def test_new_macro_get_shows_form(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    resp = client.get("/macros/new")
+    assert resp.status_code == 200
+
+
+def test_new_macro_creates_macro(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post("/macros/new", data={"name": "Uptime", "command": "uptime"})
+
+    assert resp.status_code == 302
+    macro = macro_store.get_macro("uptime")
+    assert macro is not None
+    assert macro["command"] == "uptime"
+
+
+def test_new_macro_rejects_missing_fields(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post("/macros/new", data={"name": "", "command": "uptime"})
+
+    assert resp.status_code == 200
+    assert "obligatoires" in resp.get_data(as_text=True)
+    assert macro_store.load_macros() == []
+
+
+def test_edit_macro_404s_for_unknown(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    resp = client.get("/macros/does-not-exist/edit")
+    assert resp.status_code == 404
+
+
+def test_edit_macro_updates_name_and_command(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    macro_id = macro_store.add_macro("Uptime", "uptime")
+
+    resp = client.post(
+        f"/macros/{macro_id}/edit", data={"name": "Uptime", "command": "uptime -p"},
+    )
+
+    assert resp.status_code == 302
+    assert macro_store.get_macro(macro_id)["command"] == "uptime -p"
+
+
+def test_edit_macro_delete_flag_removes_macro(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    macro_id = macro_store.add_macro("Uptime", "uptime")
+
+    resp = client.post(f"/macros/{macro_id}/edit", data={"delete": "1"})
+
+    assert resp.status_code == 302
+    assert macro_store.get_macro(macro_id) is None
+
+
+def test_run_macro_route_requires_login(client, macros_file):
+    macro_id = macro_store.add_macro("Uptime", "uptime")
+    resp = client.get(f"/macros/{macro_id}/run")
+    assert resp.status_code == 302
+
+
+def test_run_macro_route_404s_for_unknown_macro(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    resp = client.get("/macros/does-not-exist/run")
+    assert resp.status_code == 404
+
+
+def test_run_macro_route_get_shows_machine_groups(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+    macro_id = macro_store.add_macro("Uptime", "uptime")
+
+    resp = client.get(f"/macros/{macro_id}/run")
+
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Serveur Test" in body
+    assert "pas d'identifiants mémorisés" in body
+
+
+def test_run_macro_route_calls_runner_with_selected_machines(client, macros_file, monkeypatch):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur A", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+    client.post("/hosts/new", data={
+        "name": "Serveur B", "os": "linux", "host": "10.0.0.2", "ssh_port": "22",
+    })
+    macro_id = macro_store.add_macro("Uptime", "uptime")
+
+    calls = []
+
+    def fake_run_macro(command, machines, **kwargs):
+        calls.append((command, sorted(m["id"] for m in machines)))
+        return [
+            {"machine_id": m["id"], "machine_name": m["name"], "ok": True, "output": "up 3 days"}
+            for m in machines
+        ]
+
+    monkeypatch.setattr(macro_runner, "run_macro", fake_run_macro)
+
+    resp = client.post(f"/macros/{macro_id}/run", data={"machine_id": ["serveur-a"]})
+
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert calls == [("uptime", ["serveur-a"])]
+    assert "OK" in body
+    assert "up 3 days" in body
+
+
+def test_run_macro_route_with_no_selection_skips_execution(client, macros_file, monkeypatch):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    macro_id = macro_store.add_macro("Uptime", "uptime")
+
+    def must_not_be_called(*a, **k):
+        raise AssertionError("ne doit pas être appelé sans machine sélectionnée")
+
+    monkeypatch.setattr(macro_runner, "run_macro", must_not_be_called)
+
+    resp = client.post(f"/macros/{macro_id}/run", data={})
+
+    assert resp.status_code == 200
+    assert "Aucune machine sélectionnée" in resp.get_data(as_text=True)
     assert "Structure invalide" in resp.get_data(as_text=True)

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Lancer {{ macro.name }} — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Lancer « {{ macro.name }} »</div>
+  <div class="page-actions">
+    <a class="btn" href="{{ url_for('macros_list') }}">&larr; Macros</a>
+  </div>
+</div>
+
+<p class="hint-box">
+  Commande : <code>{{ macro.command }}</code><br>
+  Envoyée telle quelle à chaque machine cochée ci-dessous qui a des
+  identifiants SSH mémorisés — les autres échoueront (signalé dans les
+  résultats), pas bloquant pour le reste du pool.
+</p>
+
+{% if not groups %}
+<p class="empty-state">Aucune machine dans l'inventaire.</p>
+{% else %}
+<form method="post" id="macro-run-form">
+  {% for group in groups %}
+  <div class="room-group" data-room-group>
+    <div class="room-group-header">
+      <span>{{ group.room.name if group.room else "Sans salle" }}</span>
+      <span class="header-actions">
+        <button type="button" class="btn small" data-select-group>Tout cocher</button>
+      </span>
+    </div>
+    <div class="macro-pool-list">
+      {% for m in group.machines %}
+      <label class="macro-pool-row">
+        <input type="checkbox" name="machine_id" value="{{ m.id }}">
+        <span class="macro-pool-name">{{ m.name }}</span>
+        <span class="text-dim">{{ m.host }}</span>
+        {% if not creds_by_id.get(m.id) %}
+        <span class="text-dim">— pas d'identifiants mémorisés</span>
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="form-actions">
+    <button class="btn primary" type="submit" id="run-macro-btn">Exécuter</button>
+  </div>
+</form>
+{% endif %}
+
+{% if results is not none %}
+<div class="section-sep">
+  Résultats — {{ results|length }} machine{{ 's' if results|length != 1 else '' }}
+</div>
+{% if not results %}
+<p class="hint-box">Aucune machine sélectionnée.</p>
+{% else %}
+<div class="macro-results">
+  {% for r in results %}
+  <div class="macro-result">
+    <div class="macro-result-header">
+      <span class="svc-badge {{ 'ok' if r.ok else 'ko' }}">{{ "OK" if r.ok else "ÉCHEC" }}</span>
+      <span>{{ r.machine_name }}</span>
+    </div>
+    {% if r.output %}<pre class="macro-result-output">{{ r.output }}</pre>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+  document.querySelectorAll("[data-select-group]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const group = btn.closest("[data-room-group]");
+      group.querySelectorAll('input[name="machine_id"]').forEach((cb) => { cb.checked = true; });
+    });
+  });
+
+  const form = document.getElementById("macro-run-form");
+  if (form) {
+    form.addEventListener("submit", (e) => {
+      if (!document.querySelector('input[name="machine_id"]:checked')) {
+        e.preventDefault();
+        alert("Cochez au moins une machine.");
+        return;
+      }
+      const btn = document.getElementById("run-macro-btn");
+      btn.disabled = true;
+      btn.textContent = "Exécution en cours…";
+    });
+  }
+</script>
+{% endblock %}

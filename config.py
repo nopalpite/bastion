@@ -18,6 +18,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("BASTION_DATA_DIR", BASE_DIR)
 MACHINES_FILE = os.path.join(DATA_DIR, "machines.yaml")
 
+# Bibliothèque de macros (voir macro_store.py) — dans le même dossier que
+# machines.yaml, donc déjà persisté par le même volume Docker.
+MACROS_FILE = os.path.join(DATA_DIR, "macros.yaml")
+
 # Clé secrète de l'app (à surcharger via variable d'env en prod)
 SECRET_KEY = os.environ.get("BASTION_SECRET_KEY", "change-moi-en-production")
 
