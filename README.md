@@ -751,9 +751,10 @@ Deux variables d'environnement, au choix :
   nouvelle paire à chaque démarrage changerait son empreinte à chaque
   fois, et redéclencherait l'avertissement de sécurité du navigateur).
   Le certificat n'étant signé par aucune autorité reconnue, le navigateur
-  affichera un avertissement à la première visite (normal, à accepter
-  manuellement) — c'est la contrepartie de ne pas dépendre d'une autorité
-  de certification externe.
+  affichera un avertissement à accepter manuellement — c'est la
+  contrepartie de ne pas dépendre d'une autorité de certification externe.
+  **Cette exception est propre à chaque port** (voir le piège ci-dessous),
+  pas seulement à la première visite de l'appli.
 - **`BASTION_TLS_CERT` / `BASTION_TLS_KEY`** : chemins vers un certificat
   déjà existant (auto-signé fait main, ou même un vrai certificat déjà en
   votre possession) — prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux
@@ -776,6 +777,22 @@ connaît pas, et la connexion échouerait avec une erreur générique
 cause. Avec `BASTION_TLS_SELFSIGNED`/`BASTION_TLS_CERT`, laissez cette
 variable **vide** : le pont VNC parle TLS lui-même directement sur son
 port (6080), pas besoin de chemin.
+
+**Piège à éviter — accepter le certificat sur le port de l'appli (5000)
+ne suffit pas pour le VNC (6080)** : un navigateur mémorise l'exception
+de sécurité pour un certificat auto-signé **par origine exacte**
+(host + port), pas pour le certificat lui-même. Même si `websockify`
+présente le même certificat que l'appli, `wss://<host>:6080/` est une
+origine différente de `https://<host>:5000/` : sans exception acceptée
+sur ce port précis, la connexion VNC échoue silencieusement (Firefox
+affiche juste "impossible d'établir une connexion", la console
+navigateur un code `1015` — échec de handshake TLS — sans lien évident
+avec un certificat). Comme cet avertissement s'affiche normalement lors
+d'une navigation HTTP classique, pas lors d'un handshake WebSocket,
+**ouvrez `https://<host>:6080/` directement dans un nouvel onglet au
+moins une fois** (une page d'erreur websockify s'affichera, c'est
+normal — seul le certificat compte) pour accepter son exception avant
+la première connexion VNC.
 
 ## Derrière un reverse proxy (TLS)
 
