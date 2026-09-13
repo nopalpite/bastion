@@ -562,6 +562,74 @@ def test_run_macro_route_calls_runner_with_selected_machines(client, macros_file
     assert "up 3 days" in body
 
 
+def test_run_macro_route_records_history_on_execution(client, macros_file, monkeypatch):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur A", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+    macro_id = macro_store.add_macro("Uptime", "uptime", "linux")
+    monkeypatch.setattr(
+        macro_runner, "run_macro",
+        lambda command, machines, **kwargs: [
+            {"machine_id": m["id"], "machine_name": m["name"], "ok": True, "output": "up 3 days"}
+            for m in machines
+        ],
+    )
+
+    client.post(f"/macros/{macro_id}/run", data={"machine_id": ["serveur-a"]})
+
+    runs = history.get_recent_macro_runs()
+    assert len(runs) == 1
+    assert runs[0]["macro_name"] == "Uptime"
+    assert runs[0]["command"] == "uptime"
+    assert runs[0]["results"] == [
+        {"machine_id": "serveur-a", "machine_name": "Serveur A", "ok": True, "output": "up 3 days"},
+    ]
+
+
+def test_run_macro_route_does_not_record_history_without_selection(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    macro_id = macro_store.add_macro("Uptime", "uptime", "linux")
+
+    client.post(f"/macros/{macro_id}/run", data={})
+
+    assert history.get_recent_macro_runs() == []
+
+
+def test_macro_history_requires_login(client, macros_file):
+    resp = client.get("/macros/history")
+    assert resp.status_code == 302
+
+
+def test_macro_history_shows_recorded_runs(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    history.record_macro_run("uptime", "Uptime", "uptime", [
+        {"machine_id": "m1", "machine_name": "Serveur A", "ok": True, "output": "up 3 days"},
+        {
+            "machine_id": "m2", "machine_name": "Serveur B", "ok": False,
+            "output": "Échec de connexion",
+        },
+    ])
+
+    resp = client.get("/macros/history")
+
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Uptime" in body
+    assert "1/2 OK" in body
+    assert "Serveur A" in body
+    assert "Serveur B" in body
+    assert "Échec de connexion" in body
+
+
+def test_macro_history_shows_empty_state_without_runs(client, macros_file):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.get("/macros/history")
+
+    assert "Aucune macro n'a encore été lancée" in resp.get_data(as_text=True)
+
+
 def test_run_macro_route_ignores_selected_machine_with_wrong_os(client, macros_file, monkeypatch):
     # Défense en profondeur: même si le formulaire ne propose que les
     # machines du bon OS, la route elle-même refiltre côté serveur --

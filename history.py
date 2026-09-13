@@ -43,6 +43,25 @@ CREATE TABLE IF NOT EXISTS sessions (
     ended_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
+
+CREATE TABLE IF NOT EXISTS macro_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    macro_id TEXT NOT NULL,
+    macro_name TEXT NOT NULL,
+    command TEXT NOT NULL,
+    started_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_macro_runs_started ON macro_runs(started_at);
+
+CREATE TABLE IF NOT EXISTS macro_run_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    machine_id TEXT NOT NULL,
+    machine_name TEXT NOT NULL,
+    ok INTEGER NOT NULL,
+    output TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_macro_run_results_run ON macro_run_results(run_id);
 """
 
 
@@ -85,18 +104,27 @@ def set_retention_days(days):
 
 
 def purge_old_entries(retention_days=None):
-    """Supprime les enregistrements (vérifications ET sessions, même
-    rétention pour les deux plutôt qu'un second réglage séparé) plus
-    vieux que la rétention configurée (ou explicitement fournie), et
-    retourne le nombre total de lignes supprimées — utilisée à la fois
-    par la purge périodique automatique (monitor.py) et le bouton
-    "Purger maintenant" de la page /stats."""
+    """Supprime les enregistrements (vérifications, sessions ET
+    lancements de macros — même rétention pour tous plutôt qu'un
+    réglage séparé par type) plus vieux que la rétention configurée (ou
+    explicitement fournie), et retourne le nombre total de lignes
+    supprimées — utilisée à la fois par la purge périodique automatique
+    (monitor.py) et le bouton "Purger maintenant" de la page /stats."""
     days = retention_days if retention_days is not None else get_retention_days()
     cutoff = time.time() - days * 86400
     with _connect() as conn:
         checks_cursor = conn.execute("DELETE FROM checks WHERE checked_at < ?", (cutoff,))
         sessions_cursor = conn.execute("DELETE FROM sessions WHERE started_at < ?", (cutoff,))
-        return checks_cursor.rowcount + sessions_cursor.rowcount
+        results_cursor = conn.execute(
+            "DELETE FROM macro_run_results WHERE run_id IN "
+            "(SELECT id FROM macro_runs WHERE started_at < ?)",
+            (cutoff,),
+        )
+        runs_cursor = conn.execute("DELETE FROM macro_runs WHERE started_at < ?", (cutoff,))
+        return (
+            checks_cursor.rowcount + sessions_cursor.rowcount
+            + results_cursor.rowcount + runs_cursor.rowcount
+        )
 
 
 def get_uptime_percentage(machine_id, since_seconds):
@@ -234,4 +262,65 @@ def get_recent_sessions(limit=200):
             "started_at": r[4], "ended_at": r[5],
         }
         for r in rows
+    ]
+
+
+def record_macro_run(macro_id, macro_name, command, results):
+    """Enregistre un lancement de macro (page /macros) et son résultat
+    par machine, pour le journal /macros/history. Un lancement produit
+    tous ses résultats d'un coup (pas de notion "en cours"/"terminé" à
+    gérer séparément comme pour les sessions SSH/VNC), donc un seul
+    appel après coup suffit. macro_name et command sont recopiés tels
+    quels au moment du lancement plutôt que de ne garder que macro_id :
+    l'historique reste lisible même si la macro est ensuite renommée,
+    modifiée ou supprimée."""
+    with _connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO macro_runs (macro_id, macro_name, command, started_at) "
+            "VALUES (?, ?, ?, ?)",
+            (macro_id, macro_name, command, time.time()),
+        )
+        run_id = cursor.lastrowid
+        conn.executemany(
+            "INSERT INTO macro_run_results (run_id, machine_id, machine_name, ok, output) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                (run_id, r["machine_id"], r["machine_name"], 1 if r["ok"] else 0, r["output"])
+                for r in results
+            ],
+        )
+        return run_id
+
+
+def get_recent_macro_runs(limit=50):
+    """Retourne les lancements de macros les plus récents (les plus
+    récents en premier), chacun avec la liste de ses résultats par
+    machine — pour la page /macros/history."""
+    with _connect() as conn:
+        runs = conn.execute(
+            "SELECT id, macro_id, macro_name, command, started_at "
+            "FROM macro_runs ORDER BY started_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+        results_by_run = {r[0]: [] for r in runs}
+        if results_by_run:
+            placeholders = ",".join("?" * len(results_by_run))
+            rows = conn.execute(
+                "SELECT run_id, machine_id, machine_name, ok, output "
+                f"FROM macro_run_results WHERE run_id IN ({placeholders})",
+                list(results_by_run),
+            ).fetchall()
+            for run_id, machine_id, machine_name, ok, output in rows:
+                results_by_run[run_id].append({
+                    "machine_id": machine_id, "machine_name": machine_name,
+                    "ok": bool(ok), "output": output,
+                })
+
+    return [
+        {
+            "id": r[0], "macro_id": r[1], "macro_name": r[2], "command": r[3],
+            "started_at": r[4], "results": results_by_run[r[0]],
+        }
+        for r in runs
     ]

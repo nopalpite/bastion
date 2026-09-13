@@ -444,6 +444,13 @@ répéter la même commande à la main, machine par machine.
   changé entre-temps, cette machine échoue avec un message renvoyant
   vers le terminal SSH pour vérifier/confirmer la nouvelle clé — une
   macro ne peut pas se substituer à cette confirmation explicite.
+- **Historique** (`/macros/history`) : les 50 derniers lancements
+  (nom, commande, date, résultat par machine), repliables un par un.
+  Stocké dans la même base SQLite que le reste (`history.py`), avec la
+  même rétention/purge que les statistiques de disponibilité et le
+  journal des connexions — le nom et la commande sont figés au moment
+  du lancement, donc rester lisibles même si la macro est ensuite
+  renommée, modifiée ou supprimée.
 
 ## Configuration
 

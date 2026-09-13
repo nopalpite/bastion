@@ -1281,3 +1281,26 @@ body.modal-open {
   word-break: break-word;
 }
 
+/* page /macros/history (voir history.get_recent_macro_runs) — <details>
+   natif plutôt qu'un accordéon en JS: chaque lancement peut contenir
+   pas mal de sorties par machine, inutile de tout afficher déplié. */
+.macro-run {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.macro-run-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-raised);
+  cursor: pointer;
+  list-style: none;
+}
+.macro-run-summary::-webkit-details-marker { display: none; }
+.macro-run-name { font-weight: 500; flex: 1 1 auto; }
+.macro-run-body { padding: 14px; }
+.macro-run-body .macro-result-output.mono { margin-bottom: 12px; }
+

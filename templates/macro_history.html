@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Historique des macros — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Historique des macros</div>
+  <div class="page-actions">
+    <a class="btn" href="{{ url_for('macros_list') }}">&larr; Macros</a>
+  </div>
+</div>
+
+<p class="hint-box">
+  Les 50 derniers lancements, avec le résultat par machine. Même
+  rétention/purge que les statistiques de disponibilité et le journal
+  des connexions (page /stats).
+</p>
+
+{% if not runs %}
+<p class="empty-state">Aucune macro n'a encore été lancée.</p>
+{% else %}
+{% for run in runs %}
+<details class="macro-run">
+  <summary class="macro-run-summary">
+    <span class="macro-run-name">{{ run.macro_name }}</span>
+    <span class="text-dim">{{ run.started }}</span>
+    <span class="svc-badge {{ 'ok' if run.ok_count == run.results|length else 'ko' }}">
+      {{ run.ok_count }}/{{ run.results|length }} OK
+    </span>
+  </summary>
+  <div class="macro-run-body">
+    <pre class="macro-result-output mono">{{ run.command }}</pre>
+    <div class="macro-results">
+      {% for r in run.results %}
+      <div class="macro-result">
+        <div class="macro-result-header">
+          <span class="svc-badge {{ 'ok' if r.ok else 'ko' }}">{{ "OK" if r.ok else "ÉCHEC" }}</span>
+          <span>{{ r.machine_name }}</span>
+        </div>
+        {% if r.output %}<pre class="macro-result-output">{{ r.output }}</pre>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</details>
+{% endfor %}
+{% endif %}
+{% endblock %}

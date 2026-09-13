@@ -685,13 +685,36 @@ def run_macro(macro_id):
             m for m in store.load_machines()
             if m["id"] in selected_ids and m.get("os") == macro["os"]
         ]
-        results = macro_runner.run_macro(macro["command"], machines) if machines else []
+        if machines:
+            results = macro_runner.run_macro(macro["command"], machines)
+            try:
+                history.record_macro_run(macro["id"], macro["name"], macro["command"], results)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[app] Échec de l'enregistrement de l'historique pour la macro "
+                      f"{macro['id']}: {exc}")
+        else:
+            results = []
 
     creds_by_id = {m["id"]: store.has_stored_credentials(m) for m in store.load_machines()}
     return render_template(
         "macro_run.html", macro=macro, groups=_machine_groups_for_pool_selection(macro["os"]),
         creds_by_id=creds_by_id, results=results,
     )
+
+
+@app.route("/macros/history")
+@login_required
+def macro_history():
+    runs = []
+    for run in history.get_recent_macro_runs():
+        runs.append({
+            "macro_name": run["macro_name"],
+            "command": run["command"],
+            "started": datetime.fromtimestamp(run["started_at"]).strftime("%d/%m/%Y %H:%M:%S"),
+            "ok_count": sum(1 for r in run["results"] if r["ok"]),
+            "results": run["results"],
+        })
+    return render_template("macro_history.html", runs=runs)
 
 
 if __name__ == "__main__":

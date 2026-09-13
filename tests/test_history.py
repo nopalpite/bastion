@@ -192,3 +192,77 @@ def test_purge_old_entries_also_purges_old_sessions(history_db):
 
     assert deleted == 1
     assert [s["machine_id"] for s in history.get_recent_sessions()] == ["m2"]
+
+
+# --- Historique des macros (page /macros/history) -----------------------
+
+def _macro_results():
+    return [
+        {"machine_id": "m1", "machine_name": "Serveur A", "ok": True, "output": "up 3 days"},
+        {"machine_id": "m2", "machine_name": "Serveur B", "ok": False, "output": "Échec"},
+    ]
+
+
+def test_record_macro_run_returns_an_id(history_db):
+    run_id = history.record_macro_run("uptime", "Uptime", "uptime", _macro_results())
+    assert run_id is not None
+
+
+def test_get_recent_macro_runs_includes_per_machine_results(history_db):
+    history.record_macro_run("uptime", "Uptime", "uptime", _macro_results())
+
+    runs = history.get_recent_macro_runs()
+
+    assert len(runs) == 1
+    run = runs[0]
+    assert run["macro_id"] == "uptime"
+    assert run["macro_name"] == "Uptime"
+    assert run["command"] == "uptime"
+    assert len(run["results"]) == 2
+    assert run["results"][0] == {
+        "machine_id": "m1", "machine_name": "Serveur A", "ok": True, "output": "up 3 days",
+    }
+    assert run["results"][1]["ok"] is False
+
+
+def test_get_recent_macro_runs_most_recent_first(history_db):
+    old_id = history.record_macro_run("a", "A", "cmd-a", [])
+    with history._connect() as conn:
+        conn.execute(
+            "UPDATE macro_runs SET started_at = ? WHERE id = ?", (time.time() - 100, old_id),
+        )
+    history.record_macro_run("b", "B", "cmd-b", [])
+
+    runs = history.get_recent_macro_runs()
+
+    assert [r["macro_id"] for r in runs] == ["b", "a"]
+
+
+def test_get_recent_macro_runs_respects_limit(history_db):
+    for i in range(5):
+        history.record_macro_run(f"m{i}", f"M{i}", "cmd", [])
+
+    assert len(history.get_recent_macro_runs(limit=2)) == 2
+
+
+def test_purge_old_entries_also_purges_old_macro_runs(history_db):
+    old_id = history.record_macro_run("uptime", "Uptime", "uptime", _macro_results())
+    with history._connect() as conn:
+        conn.execute(
+            "UPDATE macro_runs SET started_at = ? WHERE id = ?",
+            (time.time() - 40 * 86400, old_id),
+        )
+    history.record_macro_run("uptime", "Uptime", "uptime", _macro_results())
+
+    deleted = history.purge_old_entries()
+
+    runs = history.get_recent_macro_runs()
+    assert len(runs) == 1
+    # Les résultats de l'ancien lancement (2 lignes) doivent partir avec
+    # lui, pas rester orphelins dans macro_run_results.
+    assert deleted == 1 + 2
+    with history._connect() as conn:
+        orphans = conn.execute(
+            "SELECT COUNT(*) FROM macro_run_results WHERE run_id = ?", (old_id,),
+        ).fetchone()[0]
+    assert orphans == 0
