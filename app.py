@@ -616,12 +616,13 @@ def new_macro():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         command = request.form.get("command", "").strip()
-        if not name or not command:
+        os_type = request.form.get("os")
+        if not name or not command or os_type not in ("linux", "windows"):
             return render_template(
                 "macro_form.html", macro=None,
-                error="Nom et commande sont obligatoires.",
+                error="Nom, commande et système sont obligatoires.",
             )
-        macro_store.add_macro(name, command)
+        macro_store.add_macro(name, command, os_type)
         return redirect(url_for("macros_list"))
 
     return render_template("macro_form.html", macro=None, error=None)
@@ -641,23 +642,24 @@ def edit_macro(macro_id):
 
         name = request.form.get("name", "").strip()
         command = request.form.get("command", "").strip()
-        if not name or not command:
+        os_type = request.form.get("os")
+        if not name or not command or os_type not in ("linux", "windows"):
             return render_template(
                 "macro_form.html", macro=macro,
-                error="Nom et commande sont obligatoires.",
+                error="Nom, commande et système sont obligatoires.",
             )
-        macro_store.update_macro(macro_id, name, command)
+        macro_store.update_macro(macro_id, name, command, os_type)
         return redirect(url_for("macros_list"))
 
     return render_template("macro_form.html", macro=macro, error=None)
 
 
-def _machine_groups_for_pool_selection():
-    """Regroupe les machines par salle (+ un groupe "sans salle") pour
-    l'écran de sélection du pool — même motif que dashboard(), en
-    omettant les salles vides (juste du bruit ici, contrairement au
+def _machine_groups_for_pool_selection(os_type):
+    """Regroupe par salle (+ un groupe "sans salle") les machines dont
+    l'OS correspond à celui de la macro — même motif que dashboard(),
+    en omettant les salles vides (juste du bruit ici, contrairement au
     dashboard où la structure complète a un intérêt de navigation)."""
-    machines = store.load_machines()
+    machines = [m for m in store.load_machines() if m.get("os") == os_type]
     groups = []
     for room in store.load_rooms():
         room_machines = [m for m in machines if m.get("room") == room["id"]]
@@ -679,12 +681,15 @@ def run_macro(macro_id):
     results = None
     if request.method == "POST":
         selected_ids = set(request.form.getlist("machine_id"))
-        machines = [m for m in store.load_machines() if m["id"] in selected_ids]
+        machines = [
+            m for m in store.load_machines()
+            if m["id"] in selected_ids and m.get("os") == macro["os"]
+        ]
         results = macro_runner.run_macro(macro["command"], machines) if machines else []
 
     creds_by_id = {m["id"]: store.has_stored_credentials(m) for m in store.load_machines()}
     return render_template(
-        "macro_run.html", macro=macro, groups=_machine_groups_for_pool_selection(),
+        "macro_run.html", macro=macro, groups=_machine_groups_for_pool_selection(macro["os"]),
         creds_by_id=creds_by_id, results=results,
     )
 

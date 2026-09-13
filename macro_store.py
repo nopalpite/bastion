@@ -62,23 +62,26 @@ def get_macro(macro_id):
     return None
 
 
-def add_macro(name, command):
+def add_macro(name, command, os_type):
     with _lock:
         data = _load()
         existing = {m["id"] for m in data["macros"]}
         macro_id = _unique_id(_slugify(name), existing)
-        data["macros"].append({"id": macro_id, "name": name, "command": command})
+        data["macros"].append({
+            "id": macro_id, "name": name, "command": command, "os": os_type,
+        })
         _save(data)
         return macro_id
 
 
-def update_macro(macro_id, name, command):
+def update_macro(macro_id, name, command, os_type):
     with _lock:
         data = _load()
         for m in data["macros"]:
             if m["id"] == macro_id:
                 m["name"] = name
                 m["command"] = command
+                m["os"] = os_type
         _save(data)
 
 

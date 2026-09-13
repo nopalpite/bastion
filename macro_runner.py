@@ -9,12 +9,14 @@ formulaire "un seul mot de passe pour tout le pool" n'aurait pas de
 sens. Une machine sans identifiants mémorisés est donc simplement
 signalée en échec pour cette exécution (pas bloquant pour les autres).
 
-Contrairement à ssh_actions.py (reboot/shutdown : commandes fixes,
-connues, gérées spécifiquement par OS avec sudo -S), une macro est une
-commande arbitraire tapée par l'utilisateur, envoyée telle quelle via
-exec_command — pas de gestion sudo automatique, pas de distinction
-Linux/Windows : si le parc ciblé est mixte, prévoir des macros séparées
-par OS.
+Contrairement à ssh_actions.py (reboot/shutdown : commandes fixes et
+connues), une macro est une commande arbitraire tapée par l'utilisateur
+— pas de distinction Linux/Windows : si le parc ciblé est mixte,
+prévoir des macros séparées par OS. Une commande commençant par "sudo"
+bénéficie en revanche de la même technique que ssh_actions.py (voir
+_prepare_sudo_command) : sudo ne peut pas demander son mot de passe de
+façon interactive via exec_command (pas de pty alloué), donc on le lui
+fournit nous-même sur stdin.
 
 Concurrence bornée via eventlet.GreenPool (même mécanisme que
 discovery.py) plutôt qu'une exécution séquentielle ou un fan-out
@@ -29,6 +31,33 @@ from ssh_client import HostKeyChanged
 
 POOL_SIZE = 16
 COMMAND_TIMEOUT_SECONDS = 30
+
+# Sous-chaînes typiques d'un refus sudo (mot de passe incorrect ou compte
+# non autorisé) dans stderr — voir ssh_actions._run_linux_action, même
+# liste, pour transformer un simple "code de sortie != 0" en message
+# compréhensible plutôt que de laisser deviner.
+_SUDO_REJECTED_MARKERS = ("password", "sorry", "incorrect")
+
+
+def _prepare_sudo_command(command):
+    """Si `command` commence par "sudo", insère les options -S -p ''
+    juste après pour pouvoir lui fournir le mot de passe via stdin
+    plutôt que via un terminal interactif (qu'exec_command n'alloue
+    pas) — même technique et même hypothèse que ssh_actions.py pour
+    reboot/shutdown : le mot de passe SSH sert aussi de mot de passe
+    sudo (cas le plus courant ; configurez NOPASSWD côté cible sinon).
+
+    Un "sudo" plus loin dans la commande (après un &&, par exemple)
+    n'est pas détecté — dans ce cas, écrivez plutôt des macros séparées
+    commençant chacune par sudo.
+
+    Retourne (commande_préparée, mot_de_passe_a_fournir: bool)."""
+    stripped = command.strip()
+    if stripped == "sudo":
+        return "sudo -S -p ''", True
+    if stripped.startswith("sudo "):
+        return "sudo -S -p '' " + stripped[len("sudo "):], True
+    return command, False
 
 
 def _run_on_machine(machine, command, timeout):
@@ -46,14 +75,32 @@ def _run_on_machine(machine, command, timeout):
             "output": "Aucun identifiant SSH mémorisé pour cette machine.",
         }
 
+    prepared_command, needs_sudo_password = _prepare_sudo_command(command)
+
     client = None
     try:
         client = ssh_client.connect(machine, username, password, timeout=timeout)
-        _stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
+        stdin, stdout, stderr = client.exec_command(prepared_command, timeout=timeout)
+        if needs_sudo_password:
+            try:
+                stdin.write(password + "\n")
+                stdin.flush()
+                stdin.channel.shutdown_write()
+            except OSError:
+                pass  # la commande a peut-être déjà terminé/coupé la connexion
         exit_status = stdout.channel.recv_exit_status()
         output = (
             stdout.read().decode(errors="ignore") + stderr.read().decode(errors="ignore")
         ).strip()
+        if (
+            exit_status != 0 and needs_sudo_password
+            and any(marker in output.lower() for marker in _SUDO_REJECTED_MARKERS)
+        ):
+            output += (
+                "\n(mot de passe sudo probablement refusé — le mot de passe SSH "
+                "sert aussi de mot de passe sudo ; configurez NOPASSWD sur la "
+                "machine cible si ce n'est pas le bon)"
+            )
         return {
             "machine_id": machine["id"], "machine_name": machine["name"],
             "ok": exit_status == 0, "output": output,

@@ -11,9 +11,10 @@
 
 <p class="hint-box">
   Une macro est une commande shell exécutée telle quelle via SSH sur les
-  machines cochées lors du lancement — pas de gestion sudo automatique,
-  pas d'adaptation selon l'OS (prévoyez des macros séparées Linux/Windows
-  si besoin). Seules les machines avec des identifiants SSH mémorisés
+  machines cochées lors du lancement — son système (Linux/Windows) fixé
+  à la création détermine quelles machines sont proposées. Une commande
+  commençant par <code>sudo</code> reçoit automatiquement le mot de
+  passe SSH. Seules les machines avec des identifiants SSH mémorisés
   peuvent être ciblées.
 </p>
 
@@ -23,12 +24,14 @@
 <div class="discovery-table">
   <div class="discovery-row macros-row discovery-head">
     <span>Nom</span>
+    <span>OS</span>
     <span>Commande</span>
     <span></span>
   </div>
   {% for macro in macros %}
   <div class="discovery-row macros-row">
     <span>{{ macro.name }}</span>
+    <span class="text-dim">{{ "Linux" if macro.os == "linux" else "Windows" }}</span>
     <span class="mono macro-command-preview">{{ macro.command }}</span>
     <span class="macros-actions">
       <a class="btn small primary" href="{{ url_for('run_macro', macro_id=macro.id) }}">Lancer</a>

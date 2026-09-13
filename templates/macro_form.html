@@ -13,13 +13,34 @@
   </div>
 
   <div class="field">
+    <label for="os">Système</label>
+    <select id="os" name="os" required>
+      <option value="linux" {{ "selected" if macro and macro.os == "linux" else "" }}>Linux</option>
+      <option value="windows" {{ "selected" if macro and macro.os == "windows" else "" }}>Windows</option>
+    </select>
+    <p class="hint-box">
+      Détermine quelles machines seront proposées au lancement (seules
+      celles de cet OS) — écrivez la commande en conséquence (bash pour
+      Linux, cmd/PowerShell selon le serveur SSH installé côté Windows).
+    </p>
+  </div>
+
+  <div class="field">
     <label for="command">Commande</label>
-    <textarea id="command" name="command" rows="4" placeholder="sudo apt update &amp;&amp; sudo apt upgrade -y" required>{{ macro.command if macro else '' }}</textarea>
+    <textarea id="command" name="command" rows="4" placeholder="sudo apt update" required>{{ macro.command if macro else '' }}</textarea>
     <p class="hint-box">
       Envoyée telle quelle via SSH (<code>exec_command</code>, pas de
-      terminal interactif) à chaque machine du pool choisi au lancement —
-      pas de gestion sudo automatique (contrairement aux actions
-      redémarrer/éteindre), pas d'adaptation Linux/Windows.
+      terminal interactif) à chaque machine du pool choisi au lancement.
+    </p>
+    <p class="hint-box">
+      <strong>sudo</strong> (Linux) : si la commande commence par
+      <code>sudo</code>, le mot de passe SSH lui est fourni
+      automatiquement (comme pour les actions redémarrer/éteindre) —
+      inutile de le retaper. Un <code>sudo</code> plus loin dans la
+      commande (après un <code>&amp;&amp;</code>) n'est en revanche pas
+      détecté : pour chaîner plusieurs commandes nécessitant sudo,
+      utilisez un seul <code>sudo</code> en tête avec un sous-shell, par
+      exemple <code>sudo sh -c "apt update &amp;&amp; apt upgrade -y"</code>.
     </p>
   </div>
 

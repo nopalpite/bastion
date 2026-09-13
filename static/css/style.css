@@ -1235,7 +1235,7 @@ body.modal-open {
 /* page /macros (exécution de commandes SSH sur un pool, voir
    macro_runner.py) ------------------------------------------------------ */
 
-.macros-row { grid-template-columns: 1fr 2fr 140px; }
+.macros-row { grid-template-columns: 1fr 80px 2fr 140px; }
 .macro-command-preview {
   overflow: hidden;
   text-overflow: ellipsis;

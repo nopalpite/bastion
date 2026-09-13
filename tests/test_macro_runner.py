@@ -25,15 +25,38 @@ class FakeChannel:
         return self._exit_status
 
 
+class FakeStdin:
+    """Capture ce qui est écrit sur stdin (voir _prepare_sudo_command /
+    _run_on_machine, qui y écrit le mot de passe sudo)."""
+
+    def __init__(self):
+        self.written = ""
+        self.flushed = False
+        self.shutdown = False
+        self.channel = self
+
+    def write(self, data):
+        self.written += data
+
+    def flush(self):
+        self.flushed = True
+
+    def shutdown_write(self):
+        self.shutdown = True
+
+
 class FakeSSHClient:
     def __init__(self, exit_status=0, stdout=b"ok\n", stderr=b""):
         self._exit_status = exit_status
         self._stdout = stdout
         self._stderr = stderr
         self.closed = False
+        self.last_command = None
+        self.stdin = FakeStdin()
 
     def exec_command(self, command, timeout=None):
-        return None, FakeStream(self._stdout, self._exit_status), FakeStream(self._stderr)
+        self.last_command = command
+        return self.stdin, FakeStream(self._stdout, self._exit_status), FakeStream(self._stderr)
 
     def close(self):
         self.closed = True
@@ -143,6 +166,80 @@ def test_run_on_machine_reports_generic_connection_error(monkeypatch):
 
     assert result["ok"] is False
     assert "connexion refusée" in result["output"]
+
+
+# --- sudo: exec_command n'alloue pas de pty, donc "sudo" ne peut pas
+# demander son mot de passe interactivement -- voir _prepare_sudo_command,
+# même technique que ssh_actions.py pour reboot/shutdown -------------------
+
+def test_prepare_sudo_command_inserts_password_flags():
+    command, needs_password = macro_runner._prepare_sudo_command("sudo apt update")
+
+    assert command == "sudo -S -p '' apt update"
+    assert needs_password is True
+
+
+def test_prepare_sudo_command_handles_bare_sudo():
+    command, needs_password = macro_runner._prepare_sudo_command("sudo")
+
+    assert command == "sudo -S -p ''"
+    assert needs_password is True
+
+
+def test_prepare_sudo_command_leaves_non_sudo_command_untouched():
+    command, needs_password = macro_runner._prepare_sudo_command("uptime")
+
+    assert command == "uptime"
+    assert needs_password is False
+
+
+def test_prepare_sudo_command_does_not_detect_sudo_mid_command():
+    # Limite documentée: seul un "sudo" en tête de commande est détecté.
+    command, needs_password = macro_runner._prepare_sudo_command("cd /tmp && sudo ls")
+
+    assert command == "cd /tmp && sudo ls"
+    assert needs_password is False
+
+
+def test_run_on_machine_sends_password_on_stdin_for_sudo_command(monkeypatch):
+    client = FakeSSHClient(exit_status=0)
+    monkeypatch.setattr(macro_runner.ssh_client, "connect", lambda *a, **k: client)
+
+    macro_runner._run_on_machine(MACHINE_WITH_CREDS, "sudo apt update", timeout=5)
+
+    assert client.last_command == "sudo -S -p '' apt update"
+    assert client.stdin.written == "hunter2\n"
+    assert client.stdin.flushed
+    assert client.stdin.shutdown
+
+
+def test_run_on_machine_does_not_write_stdin_for_non_sudo_command(monkeypatch):
+    client = FakeSSHClient(exit_status=0)
+    monkeypatch.setattr(macro_runner.ssh_client, "connect", lambda *a, **k: client)
+
+    macro_runner._run_on_machine(MACHINE_WITH_CREDS, "uptime", timeout=5)
+
+    assert client.last_command == "uptime"
+    assert client.stdin.written == ""
+
+
+def test_run_on_machine_hints_at_rejected_sudo_password(monkeypatch):
+    client = FakeSSHClient(exit_status=1, stderr=b"Sorry, try again.\n")
+    monkeypatch.setattr(macro_runner.ssh_client, "connect", lambda *a, **k: client)
+
+    result = macro_runner._run_on_machine(MACHINE_WITH_CREDS, "sudo apt update", timeout=5)
+
+    assert result["ok"] is False
+    assert "mot de passe sudo probablement refusé" in result["output"]
+
+
+def test_run_on_machine_does_not_hint_sudo_for_non_sudo_failure(monkeypatch):
+    client = FakeSSHClient(exit_status=1, stderr=b"Sorry, command not found.\n")
+    monkeypatch.setattr(macro_runner.ssh_client, "connect", lambda *a, **k: client)
+
+    result = macro_runner._run_on_machine(MACHINE_WITH_CREDS, "nope", timeout=5)
+
+    assert "mot de passe sudo" not in result["output"]
 
 
 def test_run_macro_preserves_machine_order(monkeypatch):

@@ -413,15 +413,25 @@ conception volontairement simple que `machines.yaml`), lancées en un
 clic sur un pool de machines choisi dans l'interface plutôt que de
 répéter la même commande à la main, machine par machine.
 
+- **Système (Linux/Windows)** : choisi à la création d'une macro et
+  fixe — détermine quelles machines sont proposées à son lancement
+  (seules celles du même OS). La commande elle-même n'est **pas
+  adaptée automatiquement** (bash vs cmd/PowerShell) : si votre parc
+  est mixte, prévoyez une macro par OS.
 - **Cocher un pool** : depuis l'écran de lancement d'une macro, cochez
-  les machines voulues (case "Tout cocher" par salle, ou une par une).
+  les machines voulues parmi celles du bon OS (case "Tout cocher" par
+  salle, ou une par une).
 - **Exécution** : la commande est envoyée **telle quelle** via SSH
   (`exec_command`, pas de terminal interactif) à chaque machine cochée,
-  en parallèle borné (16 connexions simultanées maximum). **Pas de
-  gestion sudo automatique** (contrairement aux actions redémarrer/
-  éteindre du dashboard, voir `ssh_actions.py`) et **pas d'adaptation
-  selon l'OS** : si votre parc est mixte Linux/Windows, prévoyez des
-  macros séparées.
+  en parallèle borné (16 connexions simultanées maximum).
+- **sudo** : une commande commençant par `sudo` reçoit automatiquement
+  le mot de passe SSH sur son entrée standard (`sudo -S -p ''`, même
+  technique que les actions redémarrer/éteindre du dashboard — voir
+  `ssh_actions.py`), sudo n'ayant pas de terminal pour le demander
+  lui-même via `exec_command`. Seul un `sudo` **en tête** de commande
+  est détecté : pour chaîner plusieurs commandes nécessitant sudo,
+  passez par un seul `sudo` avec un sous-shell, par exemple
+  `sudo sh -c "apt update && apt upgrade -y"`.
 - **Identifiants** : uniquement ceux déjà mémorisés pour chaque machine
   (voir "Identifiants mémorisés" plus haut) — avec potentiellement des
   dizaines de machines dans un pool, souvent avec des mots de passe

@@ -9,15 +9,17 @@
   </div>
 </div>
 
+{% set os_label = "Linux" if macro.os == "linux" else "Windows" %}
 <p class="hint-box">
-  Commande : <code>{{ macro.command }}</code><br>
-  Envoyée telle quelle à chaque machine cochée ci-dessous qui a des
-  identifiants SSH mémorisés — les autres échoueront (signalé dans les
-  résultats), pas bloquant pour le reste du pool.
+  Commande ({{ os_label }}) : <code>{{ macro.command }}</code><br>
+  Seules les machines {{ os_label }} sont proposées ci-dessous. Envoyée
+  telle quelle à chaque machine cochée qui a des identifiants SSH
+  mémorisés — les autres échoueront (signalé dans les résultats), pas
+  bloquant pour le reste du pool.
 </p>
 
 {% if not groups %}
-<p class="empty-state">Aucune machine dans l'inventaire.</p>
+<p class="empty-state">Aucune machine {{ os_label }} dans l'inventaire.</p>
 {% else %}
 <form method="post" id="macro-run-form">
   {% for group in groups %}
