@@ -38,6 +38,12 @@ WINDOWS_COMMANDS = {
 
 EXEC_TIMEOUT = 15
 
+# Sous-chaînes typiques d'un refus sudo (mot de passe incorrect ou compte
+# non autorisé) dans stderr — partagé avec macro_runner.py (une macro
+# commençant par "sudo" bénéficie de la même détection) pour n'avoir
+# qu'un seul endroit à mettre à jour si un nouveau message doit être géré.
+SUDO_REJECTED_MARKERS = ("password", "sorry", "incorrect")
+
 
 class ActionError(Exception):
     pass
@@ -91,7 +97,7 @@ def _run_linux_action(client, base_command, password):
 
     if exit_status != 0:
         lowered = err_text.lower()
-        if "password" in lowered or "sorry" in lowered or "incorrect" in lowered:
+        if any(marker in lowered for marker in SUDO_REJECTED_MARKERS):
             raise MissingCredentialsError(
                 "Mot de passe sudo refusé sur la machine cible (le mot de "
                 "passe SSH est aussi utilisé pour sudo — configurez "

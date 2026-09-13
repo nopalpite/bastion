@@ -266,3 +266,19 @@ def test_purge_old_entries_also_purges_old_macro_runs(history_db):
             "SELECT COUNT(*) FROM macro_run_results WHERE run_id = ?", (old_id,),
         ).fetchone()[0]
     assert orphans == 0
+
+
+def test_macro_run_results_cascade_deleted_with_parent_run(history_db):
+    # Vérifie la contrainte ON DELETE CASCADE elle-même (pas seulement
+    # purge_old_entries) : supprimer un macro_runs doit suffire, sans
+    # avoir besoin de supprimer macro_run_results à la main.
+    run_id = history.record_macro_run("uptime", "Uptime", "uptime", _macro_results())
+
+    with history._connect() as conn:
+        conn.execute("DELETE FROM macro_runs WHERE id = ?", (run_id,))
+
+    with history._connect() as conn:
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM macro_run_results WHERE run_id = ?", (run_id,),
+        ).fetchone()[0]
+    assert remaining == 0

@@ -96,7 +96,11 @@
       if (!anyChecked) {
         e.preventDefault();
         alert("Cochez au moins une machine à ajouter.");
+        return;
       }
+      const btn = document.getElementById("bulk-add-btn");
+      btn.disabled = true;
+      btn.textContent = "Ajout en cours…";
     });
   })();
 </script>

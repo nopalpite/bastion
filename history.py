@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_macro_runs_started ON macro_runs(started_at);
 
 CREATE TABLE IF NOT EXISTS macro_run_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id INTEGER NOT NULL,
+    run_id INTEGER NOT NULL REFERENCES macro_runs(id) ON DELETE CASCADE,
     machine_id TEXT NOT NULL,
     machine_name TEXT NOT NULL,
     ok INTEGER NOT NULL,
@@ -68,6 +68,11 @@ CREATE INDEX IF NOT EXISTS idx_macro_run_results_run ON macro_run_results(run_id
 def _connect():
     os.makedirs(os.path.dirname(DB_FILE) or ".", exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
+    # SQLite n'applique les contraintes de clé étrangère (ici le CASCADE
+    # de macro_run_results vers macro_runs) que si on le demande
+    # explicitement, à chaque connexion — ce n'est pas un réglage
+    # persistant du fichier.
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(_SCHEMA)
     return conn
 
@@ -109,21 +114,28 @@ def purge_old_entries(retention_days=None):
     réglage séparé par type) plus vieux que la rétention configurée (ou
     explicitement fournie), et retourne le nombre total de lignes
     supprimées — utilisée à la fois par la purge périodique automatique
-    (monitor.py) et le bouton "Purger maintenant" de la page /stats."""
+    (monitor.py) et le bouton "Purger maintenant" de la page /stats.
+
+    macro_run_results n'est jamais supprimé explicitement ici : la
+    contrainte ON DELETE CASCADE (voir _SCHEMA) s'en charge dès que son
+    macro_runs parent l'est, pour qu'une future table enfant de
+    l'historique n'ait pas besoin qu'on se souvienne de l'ajouter ici
+    dans le bon ordre — seul son nombre de lignes est compté à l'avance,
+    pour que le total retourné reste exact."""
     days = retention_days if retention_days is not None else get_retention_days()
     cutoff = time.time() - days * 86400
     with _connect() as conn:
         checks_cursor = conn.execute("DELETE FROM checks WHERE checked_at < ?", (cutoff,))
         sessions_cursor = conn.execute("DELETE FROM sessions WHERE started_at < ?", (cutoff,))
-        results_cursor = conn.execute(
-            "DELETE FROM macro_run_results WHERE run_id IN "
+        (cascaded_results,) = conn.execute(
+            "SELECT COUNT(*) FROM macro_run_results WHERE run_id IN "
             "(SELECT id FROM macro_runs WHERE started_at < ?)",
             (cutoff,),
-        )
+        ).fetchone()
         runs_cursor = conn.execute("DELETE FROM macro_runs WHERE started_at < ?", (cutoff,))
         return (
             checks_cursor.rowcount + sessions_cursor.rowcount
-            + results_cursor.rowcount + runs_cursor.rowcount
+            + runs_cursor.rowcount + cascaded_results
         )
 
 

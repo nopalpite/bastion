@@ -25,15 +25,14 @@ volontairement simple (pas de base de données) et suffisant pour un
 inventaire de quelques dizaines/centaines de machines.
 """
 import os
-import re
 import shutil
 import threading
-import unicodedata
 
 import yaml
 
 import credentials
 from config import MACHINES_FILE
+from ids import slugify, unique_id
 
 _lock = threading.Lock()
 
@@ -97,21 +96,6 @@ def _save(data):
         yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
 
 
-def _slugify(text):
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
-    text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
-    return text or "item"
-
-
-def _unique_id(base, existing_ids):
-    candidate = base
-    i = 2
-    while candidate in existing_ids:
-        candidate = f"{base}-{i}"
-        i += 1
-    return candidate
-
-
 def _next_grid_position(data, room_id):
     """Position par défaut en grille légère pour éviter que plusieurs
     hôtes ajoutés à la suite dans la même salle se superposent tous
@@ -169,7 +153,7 @@ def add_room(name, map_image=None):
     with _lock:
         data = _load()
         existing = {r["id"] for r in data["rooms"]}
-        room_id = _unique_id(_slugify(name), existing)
+        room_id = unique_id(slugify(name), existing)
         data["rooms"].append({"id": room_id, "name": name, "map_image": map_image})
         _save(data)
         return room_id
@@ -209,7 +193,7 @@ def add_machine(name, os_type, host, ssh_port=22, vnc_port=None,
     with _lock:
         data = _load()
         existing = {m["id"] for m in data["machines"]}
-        machine_id = _unique_id(_slugify(name), existing)
+        machine_id = unique_id(slugify(name), existing)
 
         entry = {
             "id": machine_id,

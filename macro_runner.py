@@ -27,16 +27,20 @@ import paramiko
 
 import credentials
 import ssh_client
+from ssh_actions import SUDO_REJECTED_MARKERS
 from ssh_client import HostKeyChanged
 
 POOL_SIZE = 16
 COMMAND_TIMEOUT_SECONDS = 30
 
-# Sous-chaînes typiques d'un refus sudo (mot de passe incorrect ou compte
-# non autorisé) dans stderr — voir ssh_actions._run_linux_action, même
-# liste, pour transformer un simple "code de sortie != 0" en message
-# compréhensible plutôt que de laisser deviner.
-_SUDO_REJECTED_MARKERS = ("password", "sorry", "incorrect")
+
+class _MacroTimeout(Exception):
+    """Levée par le eventlet.Timeout de _run_on_machine quand une
+    commande ne termine pas dans le délai imparti — une classe dédiée
+    plutôt que le TimeoutError natif : ce dernier est une sous-classe
+    d'OSError (depuis Python 3.3) et serait donc absorbé par erreur par
+    le `except OSError` existant plus bas (écriture du mot de passe
+    sudo sur stdin), masquant le timeout au lieu de le laisser remonter."""
 
 
 def _prepare_sudo_command(command):
@@ -68,7 +72,17 @@ def _run_on_machine(machine, command, timeout):
     du pool."""
     stored = machine.get("credentials") or {}
     username = stored.get("username")
-    password = credentials.decrypt(stored["password"]) if stored.get("password") else None
+    try:
+        password = credentials.decrypt(stored["password"]) if stored.get("password") else None
+    except Exception as exc:  # noqa: BLE001
+        # decrypt() ne rattrape que InvalidToken en interne -- une clé
+        # BASTION_CREDENTIALS_KEY malformée peut lever autre chose
+        # (Fernet(...) lève ValueError) : à traiter comme un échec de
+        # cette seule machine, pas laisser planter tout le lancement.
+        return {
+            "machine_id": machine["id"], "machine_name": machine["name"], "ok": False,
+            "output": f"Échec du déchiffrement des identifiants mémorisés : {exc}",
+        }
     if not username or not password:
         return {
             "machine_id": machine["id"], "machine_name": machine["name"], "ok": False,
@@ -79,22 +93,38 @@ def _run_on_machine(machine, command, timeout):
 
     client = None
     try:
-        client = ssh_client.connect(machine, username, password, timeout=timeout)
-        stdin, stdout, stderr = client.exec_command(prepared_command, timeout=timeout)
-        if needs_sudo_password:
-            try:
-                stdin.write(password + "\n")
-                stdin.flush()
-                stdin.channel.shutdown_write()
-            except OSError:
-                pass  # la commande a peut-être déjà terminé/coupé la connexion
-        exit_status = stdout.channel.recv_exit_status()
-        output = (
-            stdout.read().decode(errors="ignore") + stderr.read().decode(errors="ignore")
-        ).strip()
+        with eventlet.Timeout(timeout, _MacroTimeout):
+            client = ssh_client.connect(machine, username, password, timeout=timeout)
+            stdin, stdout, stderr = client.exec_command(prepared_command, timeout=timeout)
+            if needs_sudo_password:
+                try:
+                    stdin.write(password + "\n")
+                    stdin.flush()
+                    stdin.channel.shutdown_write()
+                except OSError:
+                    pass  # la commande a peut-être déjà terminé/coupé la connexion
+
+            # Lus en parallèle de l'attente du code de sortie (deux
+            # greenthreads) plutôt qu'après coup : ne lire qu'une fois
+            # recv_exit_status() revenu peut bloquer indéfiniment si la
+            # commande produit assez de sortie pour remplir la fenêtre de
+            # flux SSH avant de se terminer -- le processus distant reste
+            # alors bloqué en écriture, personne ne le lisant encore.
+            # recv_exit_status() lui-même n'a aucun timeout propre (le
+            # timeout de exec_command ne protège que les lectures socket,
+            # pas cette attente) : le eventlet.Timeout englobant borne le
+            # tout à `timeout` secondes au total.
+            stdout_greenlet = eventlet.spawn(stdout.read)
+            stderr_greenlet = eventlet.spawn(stderr.read)
+            exit_status = stdout.channel.recv_exit_status()
+            output = (
+                stdout_greenlet.wait().decode(errors="ignore")
+                + stderr_greenlet.wait().decode(errors="ignore")
+            ).strip()
+
         if (
             exit_status != 0 and needs_sudo_password
-            and any(marker in output.lower() for marker in _SUDO_REJECTED_MARKERS)
+            and any(marker in output.lower() for marker in SUDO_REJECTED_MARKERS)
         ):
             output += (
                 "\n(mot de passe sudo probablement refusé — le mot de passe SSH "
@@ -104,6 +134,11 @@ def _run_on_machine(machine, command, timeout):
         return {
             "machine_id": machine["id"], "machine_name": machine["name"],
             "ok": exit_status == 0, "output": output,
+        }
+    except _MacroTimeout:
+        return {
+            "machine_id": machine["id"], "machine_name": machine["name"], "ok": False,
+            "output": f"La commande n'a pas terminé dans le délai imparti ({timeout}s).",
         }
     except paramiko.AuthenticationException:
         return {

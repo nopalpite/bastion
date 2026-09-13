@@ -299,7 +299,10 @@ def bulk_add_hosts():
     ligne décochée et les autres (voir discover.html)."""
     os_type = request.form.get("os_type")
     if os_type not in ("linux", "windows"):
-        os_type = "linux"
+        # N'arrive jamais via le <select> du formulaire réel (toujours une
+        # valeur valide) — une requête malformée ne doit pas pour autant
+        # étiqueter silencieusement des machines avec le mauvais OS.
+        abort(400)
     count = request.form.get("count", type=int) or 0
 
     added = 0
@@ -654,18 +657,17 @@ def edit_macro(macro_id):
     return render_template("macro_form.html", macro=macro, error=None)
 
 
-def _machine_groups_for_pool_selection(os_type):
-    """Regroupe par salle (+ un groupe "sans salle") les machines dont
-    l'OS correspond à celui de la macro — même motif que dashboard(),
-    en omettant les salles vides (juste du bruit ici, contrairement au
+def _machine_groups_for_pool_selection(matching_machines):
+    """Regroupe par salle (+ un groupe "sans salle") les machines déjà
+    filtrées par OS par l'appelant — même motif que dashboard(), en
+    omettant les salles vides (juste du bruit ici, contrairement au
     dashboard où la structure complète a un intérêt de navigation)."""
-    machines = [m for m in store.load_machines() if m.get("os") == os_type]
     groups = []
     for room in store.load_rooms():
-        room_machines = [m for m in machines if m.get("room") == room["id"]]
+        room_machines = [m for m in matching_machines if m.get("room") == room["id"]]
         if room_machines:
             groups.append({"room": room, "machines": room_machines})
-    unassigned = [m for m in machines if not m.get("room")]
+    unassigned = [m for m in matching_machines if not m.get("room")]
     if unassigned:
         groups.append({"room": None, "machines": unassigned})
     return groups
@@ -678,13 +680,17 @@ def run_macro(macro_id):
     if not macro:
         abort(404)
 
+    # Chargée une seule fois pour toute la requête plutôt qu'à chaque
+    # sous-étape (sélection, regroupement par salle, identifiants) :
+    # store.load_machines() relit et re-parse tout machines.yaml à
+    # chaque appel, sans cache.
+    all_machines = store.load_machines()
+    matching_machines = [m for m in all_machines if m.get("os") == macro["os"]]
+
     results = None
     if request.method == "POST":
         selected_ids = set(request.form.getlist("machine_id"))
-        machines = [
-            m for m in store.load_machines()
-            if m["id"] in selected_ids and m.get("os") == macro["os"]
-        ]
+        machines = [m for m in matching_machines if m["id"] in selected_ids]
         if machines:
             results = macro_runner.run_macro(macro["command"], machines)
             try:
@@ -695,9 +701,10 @@ def run_macro(macro_id):
         else:
             results = []
 
-    creds_by_id = {m["id"]: store.has_stored_credentials(m) for m in store.load_machines()}
+    creds_by_id = {m["id"]: store.has_stored_credentials(m) for m in matching_machines}
     return render_template(
-        "macro_run.html", macro=macro, groups=_machine_groups_for_pool_selection(macro["os"]),
+        "macro_run.html", macro=macro,
+        groups=_machine_groups_for_pool_selection(matching_machines),
         creds_by_id=creds_by_id, results=results,
     )
 

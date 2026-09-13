@@ -10,13 +10,12 @@ dépôt (une bibliothèque de macros vide au premier démarrage est un
 état parfaitement valide, alors qu'un inventaire de machines vide
 serait suspect) : _load() tolère donc son absence.
 """
-import re
 import threading
-import unicodedata
 
 import yaml
 
 from config import MACROS_FILE
+from ids import slugify, unique_id
 
 _lock = threading.Lock()
 
@@ -28,27 +27,19 @@ def _load():
     except FileNotFoundError:
         data = {}
     data.setdefault("macros", [])
+    for m in data["macros"]:
+        # macros.yaml est modifiable à la main (voir docstring du module) :
+        # une entrée créée avant l'ajout du champ os, ou éditée
+        # manuellement sans lui, ne doit pas faire planter /macros/<id>/run
+        # (qui fait macro["os"]) — même esprit que la migration de
+        # machines.yaml dans store.py (_migrate_legacy_vnc_bridge_fields).
+        m.setdefault("os", "linux")
     return data
 
 
 def _save(data):
     with open(MACROS_FILE, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
-
-
-def _slugify(text):
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
-    text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
-    return text or "macro"
-
-
-def _unique_id(base, existing_ids):
-    candidate = base
-    i = 2
-    while candidate in existing_ids:
-        candidate = f"{base}-{i}"
-        i += 1
-    return candidate
 
 
 def load_macros():
@@ -66,7 +57,7 @@ def add_macro(name, command, os_type):
     with _lock:
         data = _load()
         existing = {m["id"] for m in data["macros"]}
-        macro_id = _unique_id(_slugify(name), existing)
+        macro_id = unique_id(slugify(name, fallback="macro"), existing)
         data["macros"].append({
             "id": macro_id, "name": name, "command": command, "os": os_type,
         })

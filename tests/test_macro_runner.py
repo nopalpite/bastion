@@ -1,6 +1,7 @@
 """Tests pour macro_runner.py: exécution d'une macro sur un pool de
 machines — pas de vraie connexion SSH (ssh_client.connect est
 monkeypatché, même approche que tests/test_ssh_ws.py)."""
+import eventlet
 import paramiko
 import pytest
 
@@ -82,6 +83,21 @@ def test_run_on_machine_fails_without_stored_credentials():
 
     assert result["ok"] is False
     assert "identifiant" in result["output"].lower()
+
+
+def test_run_on_machine_fails_gracefully_when_decrypt_raises(monkeypatch):
+    # credentials.decrypt() ne rattrape que InvalidToken en interne -- une
+    # BASTION_CREDENTIALS_KEY malformée fait lever autre chose (ValueError
+    # depuis Fernet(...)) : ne doit jamais remonter hors de cette machine.
+    def raise_value_error(blob):
+        raise ValueError("clé de chiffrement invalide")
+
+    monkeypatch.setattr(macro_runner.credentials, "decrypt", raise_value_error)
+
+    result = macro_runner._run_on_machine(MACHINE_WITH_CREDS, "uptime", timeout=5)
+
+    assert result["ok"] is False
+    assert "déchiffrement" in result["output"].lower()
 
 
 def test_run_on_machine_connects_with_decrypted_password(monkeypatch):
@@ -166,6 +182,35 @@ def test_run_on_machine_reports_generic_connection_error(monkeypatch):
 
     assert result["ok"] is False
     assert "connexion refusée" in result["output"]
+
+
+class _HangingChannel(FakeChannel):
+    """Simule recv_exit_status() qui ne revient jamais dans le délai
+    imparti (ex: la commande produit assez de sortie pour remplir la
+    fenêtre de flux SSH avant de se terminer, voir le commentaire dans
+    macro_runner._run_on_machine) -- eventlet.sleep() est interruptible
+    par eventlet.Timeout exactement comme le serait un vrai
+    threading.Event.wait() sous eventlet.monkey_patch() en production."""
+
+    def recv_exit_status(self):
+        eventlet.sleep(5)
+        return super().recv_exit_status()
+
+
+def test_run_on_machine_times_out_when_command_never_finishes(monkeypatch):
+    client = FakeSSHClient()
+    hanging_stdout = FakeStream(b"")
+    hanging_stdout.channel = _HangingChannel(0)
+    client.exec_command = lambda command, timeout=None: (
+        client.stdin, hanging_stdout, FakeStream(b""),
+    )
+    monkeypatch.setattr(macro_runner.ssh_client, "connect", lambda *a, **k: client)
+
+    result = macro_runner._run_on_machine(MACHINE_WITH_CREDS, "uptime", timeout=0.2)
+
+    assert result["ok"] is False
+    assert "délai imparti" in result["output"]
+    assert client.closed  # la connexion est bien refermée malgré le timeout
 
 
 # --- sudo: exec_command n'alloue pas de pty, donc "sudo" ne peut pas

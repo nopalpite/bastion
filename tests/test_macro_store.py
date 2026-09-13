@@ -1,4 +1,6 @@
 """Tests pour macro_store.py: bibliothèque de macros (voir /macros)."""
+import yaml
+
 import macro_store
 
 
@@ -56,3 +58,17 @@ def test_macros_persist_across_loads(macros_file):
 
     assert len(macro_store.load_macros()) == 1
     assert len(macro_store.load_macros()) == 1  # relit le fichier, pas un cache
+
+
+def test_load_macros_defaults_missing_os_to_linux(macros_file):
+    # macros.yaml est modifiable à la main (voir docstring du module) --
+    # une entrée écrite sans "os" (fichier édité avant l'ajout du champ,
+    # ou à la main) ne doit pas faire planter /macros/<id>/run derrière.
+    macros_file.write_text(
+        yaml.safe_dump({"macros": [{"id": "legacy", "name": "Legacy", "command": "uptime"}]}),
+        encoding="utf-8",
+    )
+
+    macro = macro_store.get_macro("legacy")
+
+    assert macro["os"] == "linux"

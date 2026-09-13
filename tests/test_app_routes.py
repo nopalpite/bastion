@@ -274,10 +274,33 @@ def test_bulk_add_hosts_applies_selected_os_and_vnc_port(client):
 def test_bulk_add_hosts_redirects_without_bulk_added_when_nothing_selected(client):
     client.post("/login", data={"username": "admin", "password": "admin"})
 
-    resp = client.post("/hosts/bulk-add", data={"count": "1", "host_0": "10.0.0.5"})
+    resp = client.post(
+        "/hosts/bulk-add", data={"count": "1", "host_0": "10.0.0.5", "os_type": "linux"},
+    )
 
     assert resp.status_code == 302
     assert "bulk_added" not in resp.headers["Location"]
+
+
+def test_bulk_add_hosts_rejects_invalid_os_type(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post("/hosts/bulk-add", data={
+        "count": "1", "select_0": "on", "host_0": "10.0.0.5", "os_type": "macos",
+    })
+
+    assert resp.status_code == 400
+    assert store.get_machine("10-0-0-5") is None
+
+
+def test_bulk_add_hosts_rejects_missing_os_type(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    resp = client.post("/hosts/bulk-add", data={
+        "count": "1", "select_0": "on", "host_0": "10.0.0.5",
+    })
+
+    assert resp.status_code == 400
 
 
 def test_discover_marks_already_inventoried_hosts(client, monkeypatch):
