@@ -1355,6 +1355,12 @@ body.session-active .container {
   flex: 1 1 auto;
   min-height: 0;
   max-width: none;
+  /* .container a "margin: 0 auto" par défaut (pour se centrer avec un
+     max-width) : sans le remettre à 0 ici, cette marge auto sur l'axe
+     transversal empêche l'item flex de s'étirer pleine largeur (il
+     rétrécit à la taille de son contenu puis se recentre), écrasant
+     tab-strip/session-view dans une colonne étroite. */
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
