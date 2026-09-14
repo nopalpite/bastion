@@ -49,7 +49,6 @@ function openSessionTab(machineId, machineName, protocol) {
   tabs.push({ id, machineId, machineName, protocol, tabEl, iframeEl });
 
   tabStrip.hidden = false;
-  document.body.classList.add("session-active");
 
   activateTab(id);
 }
@@ -58,6 +57,12 @@ function activateTab(tabId) {
   tabGridBtn.classList.toggle("active", tabId === "__grid__");
   gridView.hidden = tabId !== "__grid__";
   sessionView.hidden = tabId === "__grid__";
+  // Le layout plein écran (voir style.css) ne doit s'appliquer que
+  // pendant qu'une session est réellement affichée -- pas tant qu'un
+  // onglet existe quelque part, sinon revenir sur "Machines" avec une
+  // session ouverte en arrière-plan casserait le padding/centrage
+  // normal de la grille.
+  document.body.classList.toggle("session-active", tabId !== "__grid__");
 
   tabs.forEach((t) => {
     const active = t.id === tabId;
@@ -74,17 +79,15 @@ function closeTab(tabId) {
   closed.tabEl.remove();
   closed.iframeEl.remove(); // ferme la connexion sous-jacente (voir en-tête du fichier)
 
+  if (tabs.length === 0) tabStrip.hidden = true;
+
   if (!wasActive) return;
 
   if (tabs.length > 0) {
     activateTab(tabs[Math.max(0, idx - 1)].id);
-    return;
+  } else {
+    activateTab("__grid__");
   }
-
-  activateTab("__grid__");
-  tabStrip.hidden = true;
-  sessionView.hidden = true;
-  document.body.classList.remove("session-active");
 }
 
 tabGridBtn.addEventListener("click", () => activateTab("__grid__"));
