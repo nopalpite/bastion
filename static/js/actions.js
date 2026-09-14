@@ -11,6 +11,7 @@ function openActionModal(machineId, name) {
   document.getElementById("modal-ssh").href = `/terminal/${machineId}`;
   document.getElementById("modal-vnc").href = `/vnc/${machineId}`;
   actionModal.dataset.machineId = machineId;
+  actionModal.dataset.machineName = name;
   actionCredsForm.style.display = "none";
   actionModalMessage.textContent = "";
   actionModal.style.display = "flex";
@@ -18,6 +19,22 @@ function openActionModal(machineId, name) {
 
 document.getElementById("modal-close").addEventListener("click", () => {
   actionModal.style.display = "none";
+});
+
+// Sur le dashboard (tabs.js chargé, voir templates/dashboard.html),
+// ouvre un onglet de session plutôt que de naviguer, pour ne pas perdre
+// les onglets déjà ouverts. Ce popup est aussi utilisé sur la page plan
+// (/map/<salle>, pas d'onglets là-bas) : sans tabs.js chargé,
+// window.openSessionTab n'existe pas et on garde la navigation normale
+// via le href déjà posé par openActionModal ci-dessus.
+["modal-ssh", "modal-vnc"].forEach((id) => {
+  document.getElementById(id).addEventListener("click", (e) => {
+    if (typeof window.openSessionTab !== "function") return;
+    e.preventDefault();
+    const protocol = id === "modal-vnc" ? "vnc" : "ssh";
+    openSessionTab(actionModal.dataset.machineId, actionModal.dataset.machineName, protocol);
+    actionModal.style.display = "none";
+  });
 });
 
 function requestAction(action) {

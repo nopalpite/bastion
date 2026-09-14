@@ -6,6 +6,14 @@
 {% endblock %}
 
 {% block content %}
+<!-- Barre d'onglets de sessions SSH/VNC (voir tabs.js) : masquée tant
+     qu'aucune session n'est ouverte, l'onglet "Machines" est permanent
+     et bascule vers #grid-view sans jamais fermer de session. -->
+<div id="tab-strip" class="tab-strip" hidden>
+  <button type="button" class="tab-strip-item active" data-tab-id="__grid__" id="tab-grid">Machines</button>
+</div>
+
+<div id="grid-view">
 <div class="page-header">
   <div class="page-title">Inventaire — {{ total_count }} machine{{ 's' if total_count > 1 else '' }}</div>
   <div class="page-actions">
@@ -75,8 +83,8 @@
         {% endif %}
       </div>
       <div class="actions">
-        <a class="btn" href="{{ url_for('terminal', machine_id=m.id) }}">SSH</a>
-        <a class="btn" href="{{ url_for('vnc', machine_id=m.id) }}">VNC</a>
+        <a class="btn" href="{{ url_for('terminal', machine_id=m.id) }}" data-tab-open data-machine-id="{{ m.id }}" data-machine-name="{{ m.name }}" data-protocol="ssh">SSH</a>
+        <a class="btn" href="{{ url_for('vnc', machine_id=m.id) }}" data-tab-open data-machine-id="{{ m.id }}" data-machine-name="{{ m.name }}" data-protocol="vnc">VNC</a>
         <button class="btn" data-action-id="{{ m.id }}" data-action-name="{{ m.name }}">Actions</button>
         <a class="btn" href="{{ url_for('edit_host', machine_id=m.id) }}">Éditer</a>
       </div>
@@ -89,10 +97,15 @@
 {% endfor %}
 
 <p class="empty-state" id="search-empty-state" hidden>Aucune machine ne correspond à la recherche.</p>
+</div>
+
+<!-- Zone des sessions SSH/VNC ouvertes en onglets (voir tabs.js) -->
+<div id="session-view" class="session-view" hidden></div>
 
 <!-- Popup d'actions sur une machine -->
 {% include "_action_modal.html" %}
 
+<script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
 <script src="{{ url_for('static', filename='js/actions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

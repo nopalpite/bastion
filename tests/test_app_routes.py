@@ -105,6 +105,54 @@ def test_terminal_page_404s_for_unknown_machine(client):
     assert resp.status_code == 404
 
 
+# --- Onglets multi-sessions (voir static/js/tabs.js) : la page nue
+# chargée dans une iframe d'onglet masque son lien "Retour" via
+# ?embedded=1, qui y naviguerait l'iframe au lieu de fermer l'onglet. ---
+
+def test_terminal_page_shows_retour_link_by_default(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    resp = client.get("/terminal/serveur-test")
+
+    assert "Retour" in resp.get_data(as_text=True)
+
+
+def test_terminal_page_hides_retour_link_when_embedded(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    resp = client.get("/terminal/serveur-test?embedded=1")
+
+    assert "Retour" not in resp.get_data(as_text=True)
+
+
+def test_vnc_page_shows_retour_link_by_default(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    resp = client.get("/vnc/serveur-test")
+
+    assert "Retour" in resp.get_data(as_text=True)
+
+
+def test_vnc_page_hides_retour_link_when_embedded(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    resp = client.get("/vnc/serveur-test?embedded=1")
+
+    assert "Retour" not in resp.get_data(as_text=True)
+
+
 # --- /stats: page de statistiques de disponibilité (voir history.py) ---
 
 def test_stats_page_requires_login(client):

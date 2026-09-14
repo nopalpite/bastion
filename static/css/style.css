@@ -1337,3 +1337,80 @@ body.modal-open {
   min-height: 14px;
 }
 
+/* Onglets de sessions SSH/VNC sur le dashboard (voir tabs.js) ----------- */
+
+/* .container a un max-width + padding fixes, et une <iframe> sans
+   hauteur explicite retombe à ~150px par défaut : dès qu'une session est
+   active, on bascule sur un layout plein écran en flex plutôt que de
+   deviner un offset en pixels (même principe que body.page-map ci-dessus
+   pour la page plan, qui a le même besoin de largeur). */
+body.session-active {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+body.session-active .topbar { flex: none; }
+body.session-active .container {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex: none;
+}
+.tab-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab-strip-item:hover { color: var(--text); }
+.tab-strip-item.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-strip-close {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px;
+  border-radius: 3px;
+}
+.tab-strip-close:hover { color: var(--down); }
+
+#session-view { position: relative; flex: 1 1 auto; min-height: 0; }
+
+/* position:absolute + visibility:hidden (pas display:none) : un onglet
+   en arrière-plan garde ainsi une vraie boîte dimensionnée en
+   permanence. terminal.js appelle fitAddon.fit() sur tout resize de
+   fenêtre, calculé depuis les dimensions réelles du conteneur -- une
+   iframe à display:none retomberait à 0×0 et risquerait de corrompre la
+   taille du PTY distant si un resize survient pendant qu'un onglet est
+   masqué. */
+iframe.session-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  visibility: hidden;
+}
+iframe.session-frame.active { visibility: visible; z-index: 1; }
+

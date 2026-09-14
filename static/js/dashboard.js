@@ -30,6 +30,19 @@ document.querySelectorAll("[data-action-id]").forEach((btn) => {
   });
 });
 
+// Ouvre un onglet de session (défini dans tabs.js) au clic sur SSH/VNC
+// d'une carte machine, plutôt que de naviguer — sauf clic
+// milieu/ctrl/cmd/shift, qui doit garder son comportement natif
+// d'ouverture dans un vrai nouvel onglet navigateur (le href reste posé
+// sur ces liens pour ça).
+document.querySelectorAll("[data-tab-open]").forEach((el) => {
+  el.addEventListener("click", (e) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    openSessionTab(el.dataset.machineId, el.dataset.machineName, el.dataset.protocol);
+  });
+});
+
 // --- Vue liste / grille ---------------------------------------------
 //
 // Préférence globale mémorisée en local (façon largeur du panneau SFTP

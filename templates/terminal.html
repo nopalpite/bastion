@@ -28,7 +28,9 @@
 {% block body %}
 <div class="session-header">
   <span>SSH · <span class="machine-name">{{ machine.name }}</span> ({{ machine.host }})</span>
+  {% if not embedded %}
   <a class="btn" href="{{ url_for('dashboard') }}">Retour</a>
+  {% endif %}
 </div>
 
 <div id="connect-form" class="connect-form" {{ 'style=display:none;' if has_stored_creds }}>

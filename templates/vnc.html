@@ -6,7 +6,9 @@
   <span>VNC · <span class="machine-name">{{ machine.name }}</span> ({{ machine.host }})</span>
   <span class="header-actions">
     <button type="button" class="btn" id="vnc-clipboard-toggle">Presse-papiers</button>
+    {% if not embedded %}
     <a class="btn" href="{{ url_for('dashboard') }}">Retour</a>
+    {% endif %}
   </span>
 </div>
 

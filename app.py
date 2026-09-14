@@ -141,6 +141,10 @@ def terminal(machine_id):
     return render_template(
         "terminal.html", machine=machine,
         has_stored_creds=store.has_stored_credentials(machine),
+        # Chargée dans une iframe d'onglet (voir tabs.js) : le lien
+        # "Retour" y naviguerait l'iframe elle-même au lieu de fermer
+        # l'onglet, d'où ce paramètre pour le masquer dans ce cas.
+        embedded=request.args.get("embedded") == "1",
     )
 
 
@@ -166,6 +170,8 @@ def vnc(machine_id):
         vnc_ws_path=config.VNC_WS_PATH,
         vnc_username=machine.get("vnc_username") or "",
         vnc_password=vnc_password or "",
+        # Voir le commentaire équivalent dans terminal() ci-dessus.
+        embedded=request.args.get("embedded") == "1",
     )
 
 
