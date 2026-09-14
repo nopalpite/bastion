@@ -1304,3 +1304,36 @@ body.modal-open {
 .macro-run-body { padding: 14px; }
 .macro-run-body .macro-result-output.mono { margin-bottom: 12px; }
 
+/* page /vnc (presse-papiers texte, voir vnc.html) ----------------------- */
+
+.vnc-clipboard-panel {
+  position: fixed;
+  top: 60px;
+  right: 12px;
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.vnc-clipboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.vnc-clipboard-panel .field { margin-bottom: 10px; }
+.vnc-clipboard-panel textarea { resize: vertical; min-height: 60px; }
+.vnc-clipboard-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 6px 0 0;
+  min-height: 14px;
+}
+

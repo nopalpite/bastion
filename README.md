@@ -24,7 +24,7 @@ dépendance lourde. Facile à lire, facile à étendre.
 - **Découverte réseau** (`/discover`) : trouve les machines déjà présentes sur une plage IP (ping + SSH/VNC) pour les ajouter en un clic, sans scan de port étendu — voir la section dédiée plus bas.
 - **Plan interactif par salle** (`/map/<salle>`) : importez une image de plan (n'importe quelle résolution/ratio, voir plus bas), placez les machines dessus par glisser-déposer (souris et tactile), cliquez sur une machine pour ouvrir un accès rapide SSH/VNC ou déclencher un reboot/shutdown.
 - **Terminal SSH** dans le navigateur, avec navigateur de fichiers SFTP dans une colonne latérale (façon MobaXterm).
-- **VNC** dans le navigateur via noVNC, y compris les serveurs chiffrés (VeNCrypt/TLS, RealVNC...) — voir le pont VNC générique ci-dessous.
+- **VNC** dans le navigateur via noVNC, y compris les serveurs chiffrés (VeNCrypt/TLS, RealVNC...) — voir le pont VNC générique ci-dessous. Presse-papiers texte (bidirectionnel, sur clic) inclus.
 - **Statistiques de disponibilité** (`/stats`) : pourcentage de dispo (24h/7j/30j) et frise chronologique par machine, à partir de l'historique des vérifications de `monitor.py` — voir la section dédiée plus bas.
 - **Notifications** (optionnel) : webhook (Slack/Discord/Mattermost...) envoyé quand une machine passe up↔down — voir la section dédiée plus bas.
 - **Journal des connexions** (`/sessions`) : qui s'est connecté à quelle machine, quand, par quel protocole (SSH/VNC) — voir la section dédiée plus bas.
@@ -191,6 +191,26 @@ vérifier après coup ce que `vnc_tls_bridge.py` a réellement négocié :
 ```bash
 docker exec bastion python3 debug_vnc_security.py <host> <port>
 ```
+
+### Presse-papiers (texte)
+
+Bouton "Presse-papiers" sur la page VNC : un panneau pour envoyer du
+texte vers la machine distante, et afficher ce qu'elle y a copié.
+`ClientCutText`/`ServerCutText` sont des messages **standards** du
+protocole RFB (pas une extension propriétaire comme le transfert de
+fichiers, non géré) — ils passent déjà tels quels à travers le pont
+(relais d'octets brut après la négociation) et noVNC les gère
+nativement ; seul l'habillage était manquant.
+
+**Pas de synchronisation automatique dans les deux sens** : un
+navigateur n'autorise l'accès au presse-papiers système que depuis un
+vrai geste utilisateur (clic), jamais depuis un gestionnaire
+d'événement arbitraire (ici, la réception d'un message WebSocket) —
+chaque sens nécessite donc un clic explicite ("Envoyer" / "Copier").
+Le bouton "Copier" tente `navigator.clipboard.writeText()` (nécessite
+un contexte sécurisé, HTTPS ou localhost) et retombe sur une sélection
+du texte + `document.execCommand("copy")` si indisponible, pour
+toujours permettre au moins un Ctrl+C manuel.
 
 ## Structure
 

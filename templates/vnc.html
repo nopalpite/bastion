@@ -4,7 +4,33 @@
 {% block body %}
 <div class="session-header">
   <span>VNC · <span class="machine-name">{{ machine.name }}</span> ({{ machine.host }})</span>
-  <a class="btn" href="{{ url_for('dashboard') }}">Retour</a>
+  <span class="header-actions">
+    <button type="button" class="btn" id="vnc-clipboard-toggle">Presse-papiers</button>
+    <a class="btn" href="{{ url_for('dashboard') }}">Retour</a>
+  </span>
+</div>
+
+<div id="vnc-clipboard-panel" class="vnc-clipboard-panel" style="display:none;">
+  <div class="vnc-clipboard-header">
+    <span>Presse-papiers (texte)</span>
+    <button type="button" class="btn small" id="vnc-clipboard-close">✕</button>
+  </div>
+  <p class="hint-box">
+    Le protocole VNC ne partage que du texte, pas des fichiers ni du
+    contenu enrichi — et pour des raisons de sécurité du navigateur, rien
+    n'est synchronisé automatiquement : chaque sens nécessite un clic.
+  </p>
+  <div class="field">
+    <label for="vnc-clipboard-to-remote">Envoyer vers la machine distante</label>
+    <textarea id="vnc-clipboard-to-remote" rows="3" placeholder="Collez ici (Ctrl+V) puis Envoyer…"></textarea>
+    <button type="button" class="btn primary" id="vnc-clipboard-send">Envoyer</button>
+  </div>
+  <div class="field">
+    <label for="vnc-clipboard-from-remote">Reçu de la machine distante</label>
+    <textarea id="vnc-clipboard-from-remote" rows="3" readonly placeholder="(rien pour l'instant)"></textarea>
+    <button type="button" class="btn" id="vnc-clipboard-copy">Copier</button>
+  </div>
+  <p class="vnc-clipboard-status" id="vnc-clipboard-status"></p>
 </div>
 
 <div id="vnc-connect-form" class="connect-form" style="display:none;">
@@ -91,9 +117,12 @@
     formEl.style.display = "block";
   });
 
+  let vncConnected = false;
+
   rfb.addEventListener("connect", () => {
     formEl.style.display = "none";
     screenEl.style.display = "block";
+    vncConnected = true;
   });
 
   rfb.addEventListener("disconnect", (e) => {
@@ -103,12 +132,66 @@
     screenEl.innerHTML = clean
       ? '<p style="color:#7c8896;padding:20px;font-family:monospace;">Session VNC fermée.</p>'
       : '<p style="color:#e5484d;padding:20px;font-family:monospace;">Connexion VNC interrompue de façon inattendue (serveur injoignable, mot de passe incorrect, ou session close côté serveur).</p>';
+    vncConnected = false;
   });
 
   document.getElementById("vnc-connect-btn").addEventListener("click", () => {
     const username = document.getElementById("vnc-username").value;
     const password = document.getElementById("vnc-password").value;
     rfb.sendCredentials({ username, password });
+  });
+
+  // --- Presse-papiers (texte) ---------------------------------------
+  // ClientCutText/ServerCutText sont des messages standards du protocole
+  // RFB (pas une extension propriétaire) : ils passent déjà tels quels à
+  // travers notre pont (vnc_tls_bridge.py relaie les octets bruts après
+  // la négociation, sans les interpréter) et noVNC les gère nativement
+  // (rfb.clipboardPasteFrom / l'événement "clipboard") — il ne manquait
+  // que cet habillage. Aucune synchronisation automatique dans les deux
+  // sens : les navigateurs n'autorisent l'accès au presse-papiers
+  // système que depuis un vrai geste utilisateur (clic), pas depuis un
+  // gestionnaire d'événement WebSocket arbitraire.
+  const clipboardToggle = document.getElementById("vnc-clipboard-toggle");
+  const clipboardPanel = document.getElementById("vnc-clipboard-panel");
+  const clipboardToRemote = document.getElementById("vnc-clipboard-to-remote");
+  const clipboardFromRemote = document.getElementById("vnc-clipboard-from-remote");
+  const clipboardStatus = document.getElementById("vnc-clipboard-status");
+
+  clipboardToggle.addEventListener("click", () => {
+    clipboardPanel.style.display = clipboardPanel.style.display === "block" ? "none" : "block";
+  });
+  document.getElementById("vnc-clipboard-close").addEventListener("click", () => {
+    clipboardPanel.style.display = "none";
+  });
+
+  document.getElementById("vnc-clipboard-send").addEventListener("click", () => {
+    if (!vncConnected) {
+      clipboardStatus.textContent = "Pas encore connecté à la machine distante.";
+      return;
+    }
+    rfb.clipboardPasteFrom(clipboardToRemote.value);
+    clipboardStatus.textContent = "Envoyé.";
+  });
+
+  document.getElementById("vnc-clipboard-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(clipboardFromRemote.value);
+      clipboardStatus.textContent = "Copié dans le presse-papiers.";
+    } catch (err) {
+      // Contexte non sécurisé (HTTP simple) ou permission refusée par le
+      // navigateur : on sélectionne le texte pour au moins permettre un
+      // Ctrl+C manuel plutôt que de ne rien faire.
+      clipboardFromRemote.select();
+      const copied = document.execCommand("copy");
+      clipboardStatus.textContent = copied
+        ? "Copié dans le presse-papiers."
+        : "Texte sélectionné — copiez avec Ctrl+C.";
+    }
+  });
+
+  rfb.addEventListener("clipboard", (e) => {
+    clipboardFromRemote.value = e.detail.text;
+    clipboardStatus.textContent = "Nouveau contenu reçu de la machine distante.";
   });
 </script>
 {% endblock %}
