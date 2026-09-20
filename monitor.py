@@ -109,11 +109,30 @@ def _check_machine(machine):
     }
 
 
+def _check_machine_safe(machine):
+    """Comme _check_machine, mais ne laisse jamais une exception se
+    propager jusqu'à l'appelant. Signalé en usage réel: un
+    subprocess.TimeoutExpired levé par ping_host() via le subprocess
+    patché par eventlet a échappé au except (subprocess.TimeoutExpired,
+    ...) de ping_host() — vraisemblablement un souci d'identité de classe
+    entre le module subprocess patché et le module standard importé ici
+    (à creuser séparément si ça se reproduit). Quelle que soit la cause
+    exacte, une seule machine récalcitrante ne doit jamais pouvoir arrêter
+    la vérification des autres ni, pire, tuer le thread de fond entier
+    (voir run_checks_once ci-dessous et start_background_monitor) — elle
+    est simplement remontée "down" pour ce tour."""
+    try:
+        return _check_machine(machine)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[monitor] Échec de la vérification de {machine.get('id')}: {exc}")
+        return {"status": "down", "latency_ms": None, "services": {}, "checked_at": time.time()}
+
+
 def run_checks_once():
     """Effectue un tour de vérification de toutes les machines et met à jour status_store."""
     results = {}
     for machine in load_machines():
-        results[machine["id"]] = _check_machine(machine)
+        results[machine["id"]] = _check_machine_safe(machine)
     with status_lock:
         status_store.update(results)
     return results
@@ -169,19 +188,27 @@ def start_background_monitor(socketio):
     def loop():
         last_purge = 0.0
         while True:
-            previous = get_status_snapshot()
-            results = run_checks_once()
-            socketio.emit("status_update", results)
-            _record_history(results)
-            _notify_transitions(previous, results)
+            # Filet de sécurité en plus de _check_machine_safe ci-dessus:
+            # même un souci imprévu ailleurs dans ce tour (socketio.emit,
+            # etc.) ne doit jamais pouvoir tuer ce thread — rien ne le
+            # relance, un thread mort ici gèlerait status_store pour de
+            # bon (voir le docstring de _check_machine_safe).
+            try:
+                previous = get_status_snapshot()
+                results = run_checks_once()
+                socketio.emit("status_update", results)
+                _record_history(results)
+                _notify_transitions(previous, results)
 
-            now = time.time()
-            if now - last_purge > PURGE_INTERVAL_SECONDS:
-                try:
-                    history.purge_old_entries()
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[monitor] Échec de la purge de l'historique: {exc}")
-                last_purge = now
+                now = time.time()
+                if now - last_purge > PURGE_INTERVAL_SECONDS:
+                    try:
+                        history.purge_old_entries()
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[monitor] Échec de la purge de l'historique: {exc}")
+                    last_purge = now
+            except Exception as exc:  # noqa: BLE001
+                print(f"[monitor] Erreur inattendue dans la boucle de monitoring: {exc}")
 
             time.sleep(CHECK_INTERVAL_SECONDS)
 

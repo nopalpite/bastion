@@ -111,6 +111,46 @@ def test_run_checks_once_updates_status_store(monkeypatch):
     assert monitor.get_status_snapshot()["m1"]["status"] == "up"
 
 
+# --- _check_machine_safe / run_checks_once: une machine qui lève une
+# exception imprévue ne doit jamais interrompre le tour ni, a fortiori,
+# le thread de fond (voir start_background_monitor) — signalé en usage
+# réel via un subprocess.TimeoutExpired de ping_host échappant à son
+# propre except sous eventlet. ------------------------------------------
+
+def test_check_machine_safe_returns_down_on_unexpected_exception(monkeypatch):
+    def boom(host, timeout=None):
+        raise RuntimeError("échec imprévu")
+
+    monkeypatch.setattr(monitor, "ping_host", boom)
+
+    result = monitor._check_machine_safe({"id": "m1", "host": "10.0.0.1"})
+
+    assert result["status"] == "down"
+    assert result["latency_ms"] is None
+    assert result["services"] == {}
+
+
+def test_run_checks_once_isolates_a_machine_that_raises(monkeypatch):
+    machines = [
+        {"id": "broken", "host": "10.0.0.1"},
+        {"id": "healthy", "host": "10.0.0.2"},
+    ]
+    monkeypatch.setattr(monitor, "load_machines", lambda: machines)
+
+    def ping_host(host, timeout=None):
+        if host == "10.0.0.1":
+            raise RuntimeError("échec imprévu")
+        return True, 5.0
+
+    monkeypatch.setattr(monitor, "ping_host", ping_host)
+
+    results = monitor.run_checks_once()
+
+    assert results["broken"]["status"] == "down"
+    assert results["healthy"]["status"] == "up"
+    assert results["healthy"]["latency_ms"] == 5.0
+
+
 # --- _record_history: écrit dans history.py (page /stats), séparément de
 # run_checks_once() ci-dessus pour ne pas lui donner un effet de bord
 # caché sur un vrai fichier SQLite (voir le commentaire de _record_history
