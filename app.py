@@ -375,7 +375,6 @@ def new_host():
         ssh_port = request.form.get("ssh_port") or 22
         vnc_port = request.form.get("vnc_port") or None
         room_id = request.form.get("room") or None
-        remember = request.form.get("remember") == "on"
         username = request.form.get("username") or None
         password = request.form.get("password") or None
         vnc_username = request.form.get("vnc_username") or None
@@ -392,8 +391,8 @@ def new_host():
             name=name, os_type=os_type, host=host,
             ssh_port=ssh_port, vnc_port=vnc_port,
             room_id=room_id,
-            username=username if remember else None,
-            password=password if remember else None,
+            username=username,
+            password=password,
             vnc_username=vnc_username,
             vnc_password=vnc_password,
         )
@@ -463,7 +462,6 @@ def edit_host(machine_id):
         ssh_port = request.form.get("ssh_port") or 22
         vnc_port = request.form.get("vnc_port") or None
         room_id = request.form.get("room") or None
-        remember = request.form.get("remember") == "on"
         clear_credentials = request.form.get("clear_credentials") == "on"
         username = request.form.get("username") or None
         password = request.form.get("password") or None
@@ -482,8 +480,8 @@ def edit_host(machine_id):
             machine_id, name=name, os_type=os_type, host=host,
             ssh_port=ssh_port, vnc_port=vnc_port,
             room_id=room_id,
-            username=username if remember else None,
-            password=password if remember else None,
+            username=username,
+            password=password,
             clear_credentials=clear_credentials,
             vnc_username=vnc_username,
             vnc_password=vnc_password,

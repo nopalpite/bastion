@@ -58,8 +58,8 @@
   <p class="hint-box">
     Des identifiants sont déjà mémorisés pour cet hôte (utilisateur
     <code>{{ machine.credentials.username }}</code>). Laissez les champs
-    ci-dessous vides pour les conserver, ou remplissez-les (+ cochez
-    "Mémoriser") pour les remplacer.
+    ci-dessous vides pour les conserver, ou remplissez-les pour les
+    remplacer.
   </p>
   {% endif %}
 
@@ -74,17 +74,11 @@
     </div>
   </div>
 
-  {% if credentials_enabled %}
-  <label class="checkbox-line">
-    <input type="checkbox" name="remember">
-    Mémoriser ces identifiants (chiffrés) pour éviter de les ressaisir à chaque connexion
-  </label>
-  {% if machine and machine.credentials %}
+  {% if credentials_enabled and machine and machine.credentials %}
   <label class="checkbox-line">
     <input type="checkbox" name="clear_credentials">
     Supprimer les identifiants mémorisés pour cet hôte
   </label>
-  {% endif %}
   {% endif %}
 
   <div class="section-sep">VNC (optionnel)</div>
