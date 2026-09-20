@@ -24,6 +24,7 @@ import socket
 import struct
 
 import eventlet
+import psutil
 
 import monitor
 import vnc_tls_bridge
@@ -93,6 +94,38 @@ def _local_ip_for(target_ip):
         return None
     finally:
         sock.close()
+
+
+def list_local_networks():
+    """Liste les réseaux IPv4 locaux, un par interface active — pour le
+    menu déroulant de /discover, afin que l'utilisateur choisisse la
+    bonne plage plutôt que de la deviner ou de la taper à la main
+    (guess_local_cidr() ne devine que celle de la route par défaut, pas
+    forcément la bonne sur un hôte multi-interfaces). Ignore le loopback
+    et toute adresse sans masque exploitable. Retourne une liste vide en
+    cas d'erreur d'énumération plutôt que de lever une exception
+    (best-effort, comme guess_local_cidr) — le champ CIDR reste de toute
+    façon saisissable à la main si la liste est vide ou incomplète."""
+    networks = []
+    try:
+        interfaces = psutil.net_if_addrs()
+    except OSError:
+        return networks
+
+    for name, addrs in interfaces.items():
+        for addr in addrs:
+            if addr.family != socket.AF_INET or not addr.netmask:
+                continue
+            if addr.address.startswith("127."):
+                continue
+            try:
+                network = ipaddress.ip_network(f"{addr.address}/{addr.netmask}", strict=False)
+            except ValueError:
+                continue
+            networks.append({"interface": name, "ip": addr.address, "cidr": str(network)})
+
+    networks.sort(key=lambda n: n["interface"])
+    return networks
 
 
 def parse_hosts(cidr):

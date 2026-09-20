@@ -18,6 +18,17 @@
 {% endif %}
 
 <form method="post" class="inline-form" id="discover-form">
+  {% if available_networks %}
+  <div class="field">
+    <label for="cidr-iface">Interface réseau</label>
+    <select id="cidr-iface">
+      <option value="">— Choisir une interface —</option>
+      {% for net in available_networks %}
+      <option value="{{ net.cidr }}">{{ net.interface }} — {{ net.ip }} ({{ net.cidr }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
   <div class="field">
     <label for="cidr">Plage IP (CIDR)</label>
     <input type="text" id="cidr" name="cidr" value="{{ cidr or default_cidr or '' }}"
@@ -111,5 +122,15 @@
     btn.disabled = true;
     btn.textContent = "Scan en cours…";
   });
+</script>
+
+<script>
+  (function () {
+    const ifaceSelect = document.getElementById("cidr-iface");
+    if (!ifaceSelect) return;
+    ifaceSelect.addEventListener("change", () => {
+      if (ifaceSelect.value) document.getElementById("cidr").value = ifaceSelect.value;
+    });
+  })();
 </script>
 {% endblock %}

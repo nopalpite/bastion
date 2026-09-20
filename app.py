@@ -288,6 +288,7 @@ def discover():
         "discover.html",
         cidr=cidr, results=results, error=error,
         default_cidr=discovery.guess_local_cidr(),
+        available_networks=discovery.list_local_networks(),
         existing_hosts=existing_hosts,
     )
 

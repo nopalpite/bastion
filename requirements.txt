@@ -4,6 +4,7 @@ Flask-Login==0.6.3
 paramiko==3.4.0
 PyYAML==6.0.1
 eventlet==0.36.1
+psutil==6.1.1
 # Versions non épinglées strictement (contrairement aux autres): ces
 # quatre paquets ont une extension native (Rust ou C) et certaines
 # versions exactes n'ont pas de wheel précompilée pour toutes les

@@ -122,6 +122,47 @@ def test_guess_local_cidr_returns_none_on_socket_error(monkeypatch):
     assert discovery.guess_local_cidr() is None
 
 
+# --- list_local_networks: menu déroulant des interfaces sur /discover --
+
+
+class _FakeAddr:
+    def __init__(self, family, address, netmask=None):
+        self.family = family
+        self.address = address
+        self.netmask = netmask
+
+
+def test_list_local_networks_returns_ipv4_entries_with_cidr(monkeypatch):
+    fake_addrs = {
+        "eth0": [
+            _FakeAddr(socket.AF_INET, "192.168.1.42", "255.255.255.0"),
+            _FakeAddr(socket.AF_INET6, "fe80::1", "ffff:ffff:ffff:ffff::"),
+        ],
+        "lo": [_FakeAddr(socket.AF_INET, "127.0.0.1", "255.0.0.0")],
+    }
+    monkeypatch.setattr(discovery.psutil, "net_if_addrs", lambda: fake_addrs)
+
+    networks = discovery.list_local_networks()
+
+    assert networks == [{"interface": "eth0", "ip": "192.168.1.42", "cidr": "192.168.1.0/24"}]
+
+
+def test_list_local_networks_skips_entries_without_netmask(monkeypatch):
+    fake_addrs = {"eth0": [_FakeAddr(socket.AF_INET, "192.168.1.42", netmask=None)]}
+    monkeypatch.setattr(discovery.psutil, "net_if_addrs", lambda: fake_addrs)
+
+    assert discovery.list_local_networks() == []
+
+
+def test_list_local_networks_returns_empty_list_on_error(monkeypatch):
+    def raise_error():
+        raise OSError("no interfaces")
+
+    monkeypatch.setattr(discovery.psutil, "net_if_addrs", raise_error)
+
+    assert discovery.list_local_networks() == []
+
+
 # --- _local_ip_for: interface à utiliser pour joindre une IP précise
 # (contrairement à guess_local_cidr, qui devine l'interface "par défaut"
 # via une destination arbitraire) -- voir son usage dans
