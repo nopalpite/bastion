@@ -76,6 +76,25 @@ def guess_local_cidr():
     return str(network)
 
 
+def _local_ip_for(target_ip):
+    """Devine l'IP locale (donc l'interface) qui serait effectivement
+    utilisée pour joindre `target_ip` — même technique que
+    guess_local_cidr() ci-dessus (connect() UDP, aucun paquet réellement
+    envoyé), mais paramétrée par la cible réelle plutôt que par une
+    destination arbitraire (8.8.8.8) : sert à _mdns_reverse_lookup pour
+    forcer la bonne interface de sortie sur un hôte multi-interfaces.
+    Retourne None si indétectable (best-effort — aucune régression sur
+    un hôte mono-interface, le choix du noyau reste alors inchangé)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect((target_ip, 1))
+        return sock.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        sock.close()
+
+
 def parse_hosts(cidr):
     """Valide la plage et retourne la liste des adresses hôte (str) à
     scanner. Lève DiscoveryError (pas une exception réseau) sur une plage
@@ -188,10 +207,32 @@ def _mdns_reverse_lookup(ip, timeout=_MDNS_TIMEOUT):
     comme zeroconf — même esprit que le protocole RFB dans
     vnc_tls_bridge.py. Retourne None si l'appareil ne répond pas (mDNS
     désactivé, Windows sans Bonjour...), pas une erreur : le signal pour
-    retomber sur le DNS classique (voir _reverse_dns)."""
+    retomber sur le DNS classique (voir _reverse_dns).
+
+    Sur un hôte multi-interfaces (network_mode: host avec, en plus de la
+    carte réseau principale, un bridge virtuel isolé — VM, conteneurs,
+    VLAN de test...), un paquet multicast envoyé sans préciser
+    d'interface sort par celle de la route par défaut, indépendamment de
+    l'interface réellement connectée au réseau de `ip` : il n'atteint
+    alors jamais l'Avahi de la machine ciblée, même si elle y répondrait
+    normalement (signalé par un utilisateur d'un autre projet utilisant
+    Bastion). D'où le bind()/IP_MULTICAST_IF ci-dessous sur l'interface
+    qui serait effectivement utilisée pour joindre `ip` — best-effort :
+    si indétectable ou si l'un des deux échoue, on retombe sur le choix
+    du noyau, sans régression sur un hôte mono-interface classique (le
+    cas d'usage d'origine, réseau domestique)."""
     packet = _build_ptr_query(ip)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(timeout)
+    local_ip = _local_ip_for(ip)
+    if local_ip:
+        try:
+            sock.bind((local_ip, 0))
+            sock.setsockopt(
+                socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(local_ip)
+            )
+        except OSError:
+            pass
     try:
         sock.sendto(packet, _MDNS_ADDR)
         data, _addr = sock.recvfrom(4096)
@@ -213,6 +254,17 @@ def _strip_local_suffix(hostname):
 
 
 def _reverse_dns(ip):
+    """Essaie mDNS en premier (voir _mdns_reverse_lookup), puis retombe
+    sur le DNS classique si l'appareil ne répond pas.
+
+    Limite connue sur ce repli, même cause racine que le correctif
+    multi-interfaces de _mdns_reverse_lookup ci-dessus : socket.gethostbyaddr
+    utilise le résolveur DNS *système* de l'hôte, qui n'a souvent aucune
+    connaissance d'un réseau secondaire isolé (VLAN de test, réseau de
+    VM...) avec son propre DNS local. Pas de correctif générique évident
+    ici (dépend du DNS effectivement disponible sur ce réseau précis) —
+    juste à garder en tête que ce repli peut échouer pour la même classe
+    de raison que le multicast non ciblé."""
     hostname = _mdns_reverse_lookup(ip)
     if hostname:
         return _strip_local_suffix(hostname)

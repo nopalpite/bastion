@@ -114,6 +114,14 @@ protocole RFB dans `vnc_tls_bridge.py`) ; le DNS classique
 noms mDNS portent systématiquement (détail du protocole, RFC 6762 §3)
 est retiré avant affichage/préremplissage.
 
+Sur un hôte multi-interfaces (`network_mode: host` avec, en plus de la
+carte réseau principale, un bridge virtuel isolé — VM, conteneurs, VLAN
+de test...), le paquet multicast mDNS est explicitement envoyé via
+l'interface qui serait effectivement utilisée pour joindre la machine
+scannée (et non celle de la route par défaut, choisie par le noyau par
+défaut) — sans ça, il n'atteint jamais l'Avahi d'une machine située sur
+une interface secondaire, même si elle y répondrait normalement.
+
 ## Pont VNC générique (`vnc_tls_bridge.py`)
 
 Toute machine avec un port VNC configuré passe par ce pont plutôt que
