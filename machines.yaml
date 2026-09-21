@@ -1,42 +1,34 @@
-rooms:
-  - id: salle-a
-    name: "Salle serveurs A"
-    map_image: null
+# Inventaire des machines et salles, chargé par store.py à chaque lecture.
+#
+# Vide par défaut : ajoutez vos hôtes/salles depuis l'interface ("+ Hôte"
+# / "+ Salle") plutôt qu'à la main ici, sauf besoin spécifique. En Docker,
+# c'est ce fichier (vide) qui est copié dans le volume monté au tout
+# premier démarrage si celui-ci est vide (voir docker/entrypoint.sh et la
+# section BASTION_DATA_DIR du README) : aucune machine de démo n'apparaît
+# donc plus automatiquement.
+#
+# Exemple de structure complète :
+#
+# rooms:
+#   - id: salle-a
+#     name: "Salle serveurs A"
+#     map_image: null
+#
+# machines:
+#   - id: srv-linux-01
+#     name: "Serveur Web Linux"
+#     os: linux
+#     host: 192.168.1.10
+#     ssh_port: 22
+#     vnc_port: 5901
+#     room: salle-a
+#     position: {x: 30, y: 40}
+#     # Identifiants mémorisés (optionnel). Le mot de passe est chiffré via
+#     # BASTION_CREDENTIALS_KEY - ne jamais écrire un mot de passe en clair
+#     # ici à la main, passer par la page "+ Hôte" ou par credentials.py.
+#     # credentials:
+#     #   username: root
+#     #   password: "gAAAAA...=="
 
-  - id: salle-b
-    name: "Salle serveurs B"
-    map_image: null
-
-machines:
-  - id: srv-linux-01
-    name: "Serveur Web Linux"
-    os: linux
-    host: 192.168.1.10
-    ssh_port: 22
-    vnc_port: 5901
-    room: salle-a
-    position: {x: 30, y: 40}
-    # Identifiants mémorisés (optionnel). Le mot de passe est chiffré via
-    # BASTION_CREDENTIALS_KEY - ne jamais écrire un mot de passe en clair
-    # ici à la main, passer par la page "+ Hôte" ou par credentials.py.
-    # credentials:
-    #   username: root
-    #   password: "gAAAAA...=="
-
-  - id: srv-linux-02
-    name: "Serveur BDD Linux"
-    os: linux
-    host: 192.168.1.11
-    ssh_port: 22
-    vnc_port: 5902
-    room: salle-a
-    position: {x: 65, y: 40}
-
-  - id: srv-win-01
-    name: "Serveur Windows AD"
-    os: windows
-    host: 192.168.1.20
-    ssh_port: 22
-    vnc_port: 5900
-    room: salle-b
-    position: {x: 50, y: 50}
+rooms: []
+machines: []

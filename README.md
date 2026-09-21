@@ -621,8 +621,8 @@ lieu d'un fichier — le montage échoue alors avec une erreur du type
 `... not a directory: Are you trying to mount a directory onto a file?`.
 Monter un dossier n'a pas ce problème (Docker crée un dossier des deux
 côtés si besoin) ; `./config/machines.yaml` est amorcé automatiquement
-avec un inventaire d'exemple si le dossier est vide au démarrage (voir
-`docker/entrypoint.sh`).
+(vide, sans machine ni salle de démo) si le dossier est vide au
+démarrage (voir `docker/entrypoint.sh`).
 
 ### Build sur ARM (Apple Silicon, Raspberry Pi...)
 
