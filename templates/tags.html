@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Tags — Bastion{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">Tags</div>
+</div>
+
+<p class="hint-box">
+  Catalogue des tags utilisables sur les machines (voir le formulaire
+  d'hôte, section "Tags") — sert de groupes pour l'inventaire Ansible
+  (<code>GET /api/machines</code>). Un tag ne peut être appliqué à une
+  machine que s'il figure ici : pas de texte libre côté formulaire, pour
+  éviter les graphies divergentes ("ecran"/"Ecran"/"écran"). Supprimer un
+  tag ici le retire aussi de toutes les machines qui le portaient.
+</p>
+
+<form method="post" class="inline-form">
+  <div class="field">
+    <label for="name">Nouveau tag</label>
+    <input type="text" id="name" name="name" placeholder="ecran" required autofocus>
+  </div>
+  <button class="btn primary" type="submit">Ajouter</button>
+</form>
+
+{% if tags %}
+<div class="section-sep">{{ tags|length }} tag{{ 's' if tags|length != 1 else '' }}</div>
+<div class="tag-catalog-list">
+  {% for tag in tags %}
+  <div class="tag-catalog-row">
+    <span class="mono">{{ tag }}</span>
+    <form method="post" action="{{ url_for('delete_tag', tag=tag) }}">
+      <button class="btn small danger" type="submit"
+              onclick="return confirm('Supprimer ce tag ? Il sera retiré de toutes les machines concernées.');">
+        Supprimer
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="hint-box">Aucun tag pour l'instant.</p>
+{% endif %}
+{% endblock %}

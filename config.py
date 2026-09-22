@@ -76,3 +76,9 @@ HISTORY_RETENTION_DAYS_DEFAULT = int(os.environ.get("BASTION_HISTORY_RETENTION_D
 # Mattermost...), vide par défaut (désactivé). Un seul type de webhook à
 # gérer plutôt qu'une intégration par service : voir notifications.send().
 NOTIFY_WEBHOOK_URL = os.environ.get("BASTION_NOTIFY_WEBHOOK_URL", "").strip()
+
+# Jeton d'API pour GET /api/machines (inventaire en lecture seule, pensé
+# pour un inventaire dynamique Ansible — voir app.py/README). Vide par
+# défaut: la route répond 404 (fonctionnalité inexistante tant qu'elle
+# n'est pas configurée), même logique que les autres opt-in ci-dessus.
+API_TOKEN = os.environ.get("BASTION_API_TOKEN", "").strip()

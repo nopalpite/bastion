@@ -634,6 +634,14 @@ body.page-map .container { max-width: none; }
   border-top: 1px solid var(--border);
   padding-top: 18px;
 }
+.tag-catalog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tag-catalog-row:last-child { border-bottom: none; }
 .hint-box {
   font-size: 12px;
   color: var(--text-dim);
@@ -655,6 +663,17 @@ body.page-map .container { max-width: none; }
   color: var(--text-dim);
   margin-top: 14px;
 }
+/* Cases à cocher nichées dans un .field (ex: tags du catalogue sur
+   host_form.html), contrairement aux cases isolées existantes
+   ("Supprimer les identifiants mémorisés") qui ne le sont pas :
+   - .field input { width: 100% } (ci-dessus) s'appliquerait sinon aussi
+     à la case elle-même, l'étirant sur toute la largeur et poussant son
+     libellé tout à droite ;
+   - .field label { display: block } est plus spécifique que
+     .checkbox-line seul et écraserait sinon son display:flex. */
+.field input[type="checkbox"] { width: auto; }
+.tag-checkboxes .checkbox-line { display: flex; margin-top: 6px; }
+.tag-checkboxes .checkbox-line:first-child { margin-top: 8px; }
 select {
   width: 100%;
   padding: 9px 10px;

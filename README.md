@@ -435,6 +435,63 @@ Deux boutons sur le dashboard (à côté de `+ Hôte`) :
   l'écrasement — une seule génération de secours, pas un historique
   complet, mais de quoi revenir en arrière après un import malencontreux.
 
+## API d'inventaire (`/api/machines`)
+
+Endpoint en lecture seule pensé pour un inventaire dynamique Ansible (ou
+tout autre outil externe) : plutôt que de dupliquer une deuxième liste de
+machines qui finirait par diverger de celle de Bastion, un script peut
+interroger directement cet endpoint.
+
+Désactivé par défaut : définissez `BASTION_API_TOKEN` pour l'activer (la
+route répond `404` tant qu'aucun jeton n'est configuré, comme les autres
+fonctionnalités opt-in de ce projet). Authentification par en-tête
+`Authorization: Bearer <jeton>` — pas la session de connexion à
+l'interface, qu'un script n'a pas.
+
+```bash
+curl -H "Authorization: Bearer $BASTION_API_TOKEN" https://bastion.exemple/api/machines
+```
+
+```json
+[
+  {
+    "id": "borne-1",
+    "name": "Borne 1",
+    "host": "10.0.0.5",
+    "os": "linux",
+    "ssh_port": 22,
+    "site": "Salle Expo",
+    "tags": ["ecran", "gpio"]
+  }
+]
+```
+
+`site` reprend le nom de la salle de la machine (`null` si aucune) ;
+`tags` est la liste (éventuellement vide) cochée dans le champ "Tags" du
+formulaire d'hôte — un tag par caractéristique indépendante (ex: `ecran`/
+`sans-ecran`, `gpio`), pas une catégorie exclusive : une machine peut en
+porter plusieurs, et un groupe Ansible correspond naturellement à un tag.
+
+Les tags viennent d'un **catalogue géré** (page "Gérer les tags" depuis
+le dashboard, `/tags`) plutôt que d'un champ texte libre : le formulaire
+d'hôte ne propose que des cases à cocher parmi les tags déjà créés,
+jamais de saisie libre — pour éviter que chacun invente sa propre
+graphie machine par machine ("ecran"/"Ecran"/"écran"). Supprimer un tag
+depuis cette page le retire aussi de toutes les machines qui le
+portaient (le catalogue fait autorité : un tag qui n'y figure plus ne
+peut pas rester sur une machine).
+
+**Cet endpoint ne renvoie jamais de secret** (pas d'identifiants, de clé
+d'hôte SSH ni de mot de passe VNC) et il n'y a volontairement aucun
+endpoint pour en récupérer un, même chiffré/à la demande : faire
+transiter les secrets déjà mémorisés dans Bastion vers un outil externe
+créerait une surface de risque bien plus large que la case d'usage ne le
+justifie (compromettre ce jeton donnerait accès en clair aux identifiants
+de tout le parc). Pour se connecter aux machines depuis Ansible, utilisez
+une clé SSH dédiée à l'automatisation, distribuée hors bande (Vault, un
+gestionnaire de secrets...) et ajoutée au `authorized_keys` des machines
+cibles indépendamment de Bastion.
+
 ## Macros (`/macros`, `macro_store.py`, `macro_runner.py`)
 
 Bibliothèque de commandes SSH réutilisables (`macros.yaml`, même
@@ -535,6 +592,7 @@ Variables d'environnement utiles :
 | `BASTION_TLS_CERT` / `BASTION_TLS_KEY` | chemins vers un certificat déjà existant, prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux sont définis | (aucun) |
 | `BASTION_HISTORY_RETENTION_DAYS` | rétention de l'historique de disponibilité (page `/stats`) — n'amorce le réglage qu'au premier démarrage, modifiable ensuite depuis l'interface | `30` |
 | `BASTION_NOTIFY_WEBHOOK_URL` | webhook (Slack/Discord/Mattermost...) notifié quand une machine change d'état (up/down) — voir la section "Notifications" | (vide, désactivé) |
+| `BASTION_API_TOKEN` | jeton d'authentification pour `GET /api/machines` (inventaire en lecture seule) — voir la section dédiée | (vide, route inexistante) |
 
 ## Lancement
 

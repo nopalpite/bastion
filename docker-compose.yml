@@ -39,6 +39,10 @@ services:
       # machine change d'état (up/down) — voir la section "Notifications"
       # du README. Vide par défaut (désactivé).
       - BASTION_NOTIFY_WEBHOOK_URL=
+      # Optionnel: active GET /api/machines (inventaire en lecture seule,
+      # ex: source pour un inventaire dynamique Ansible) — voir la section
+      # "API d'inventaire" du README. Vide par défaut (route inexistante).
+      - BASTION_API_TOKEN=
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement: voir BASTION_DATA_DIR

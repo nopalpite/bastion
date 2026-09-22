@@ -72,6 +72,7 @@ def _load():
         data = yaml.safe_load(f) or {}
     data.setdefault("rooms", [])
     data.setdefault("machines", [])
+    data.setdefault("tags", [])
     for m in data["machines"]:
         _migrate_legacy_vnc_bridge_fields(m)
     return data
@@ -118,6 +119,17 @@ def load_machines():
 
 def load_rooms():
     return _load()["rooms"]
+
+
+def load_tag_catalog():
+    """Catalogue des tags disponibles pour les machines (voir /tags) —
+    une machine ne peut porter qu'un tag présent ici, voir add_machine/
+    update_machine ci-dessous. Même principe que load_rooms(), en plus
+    simple : un tag est déjà sa propre valeur canonique (pas de
+    distinction id/libellé comme pour les salles, qui ont besoin
+    d'afficher un nom avec espaces/accents tout en gardant un id stable
+    en URL)."""
+    return _load()["tags"]
 
 
 def get_machine(machine_id):
@@ -201,6 +213,40 @@ def set_room_map_image(room_id, filename):
         _save(data)
 
 
+def add_tag_to_catalog(name):
+    """Ajoute un tag au catalogue géré (voir /tags). Normalisé avec
+    slugify() comme les ids de machines/salles (accents repliés,
+    minuscules, espaces→tirets) pour qu'un même tag ne puisse jamais
+    exister sous deux graphies différentes dans le catalogue. No-op
+    silencieux si vide ou déjà présent — idempotent, pas d'erreur pour un
+    cas aussi bénin (même philosophie que _build_credentials ci-dessus)."""
+    name = slugify(name, fallback="")
+    if not name:
+        return
+    with _lock:
+        data = _load()
+        if name not in data["tags"]:
+            data["tags"].append(name)
+            _save(data)
+
+
+def delete_tag_from_catalog(name):
+    """Retire un tag du catalogue ET de toute machine qui le porte — un
+    tag supprimé ne doit jamais rester orphelin sur une machine, sans
+    quoi la politique de contrôle des tags (un tag de machine doit
+    toujours exister dans le catalogue, voir add_machine/update_machine)
+    perdrait son sens."""
+    with _lock:
+        data = _load()
+        data["tags"] = [t for t in data["tags"] if t != name]
+        for m in data["machines"]:
+            if name in (m.get("tags") or []):
+                m["tags"] = [t for t in m["tags"] if t != name]
+                if not m["tags"]:
+                    m.pop("tags", None)
+        _save(data)
+
+
 VNC_BRIDGE_BASE_PORT = 6100
 
 
@@ -223,7 +269,7 @@ def _next_vnc_bridge_port(data):
 def add_machine(name, os_type, host, ssh_port=22, vnc_port=None,
                  room_id=None, username=None, password=None,
                  private_key=None, private_key_passphrase=None, sudo_password=None,
-                 vnc_username=None, vnc_password=None):
+                 vnc_username=None, vnc_password=None, tags=None):
     with _lock:
         data = _load()
         existing = {m["id"] for m in data["machines"]}
@@ -236,6 +282,14 @@ def add_machine(name, os_type, host, ssh_port=22, vnc_port=None,
             "host": host,
             "ssh_port": int(ssh_port) if ssh_port else 22,
         }
+        if tags:
+            # Filtré contre le catalogue géré (voir load_tag_catalog/
+            # add_tag_to_catalog) en profondeur, pas seulement côté UI:
+            # un POST direct ne doit pas non plus pouvoir injecter un tag
+            # hors catalogue.
+            filtered_tags = [t for t in tags if t in data["tags"]]
+            if filtered_tags:
+                entry["tags"] = filtered_tags
         if vnc_port:
             entry["vnc_port"] = int(vnc_port)
             if vnc_username:
@@ -312,12 +366,18 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
                     room_id=None, username=None, password=None,
                     private_key=None, private_key_passphrase=None, sudo_password=None,
                     clear_credentials=False, vnc_username=None, vnc_password=None,
-                    clear_vnc_password=False):
+                    clear_vnc_password=False, tags=None):
     """Met à jour une machine existante en place (id inchangé même si le
     nom change). Les identifiants ne sont modifiés que si username et
     (password ou private_key) sont fournis, ou effacés si
     clear_credentials est vrai — sinon ils restent tels quels. Même
-    logique pour vnc_password/clear_vnc_password."""
+    logique pour vnc_password/clear_vnc_password. tags, comme name/os/
+    host, reflète toujours l'état complet soumis par le formulaire (pas
+    de logique "vide = conserver" : le champ est prérempli avec les tags
+    actuels à l'édition, contrairement aux identifiants qui ne
+    réaffichent jamais de secret) — filtré contre le catalogue géré (voir
+    load_tag_catalog/add_tag_to_catalog), un tag qui n'y figure plus
+    disparaît silencieusement plutôt que d'être stocké quand même."""
     with _lock:
         data = _load()
         for m in data["machines"]:
@@ -328,6 +388,11 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
             m["os"] = os_type
             m["host"] = host
             m["ssh_port"] = int(ssh_port) if ssh_port else 22
+            filtered_tags = [t for t in tags if t in data["tags"]] if tags else []
+            if filtered_tags:
+                m["tags"] = filtered_tags
+            else:
+                m.pop("tags", None)
 
             if vnc_port:
                 m["vnc_port"] = int(vnc_port)

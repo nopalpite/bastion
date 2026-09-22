@@ -11,6 +11,7 @@ Voir README.md pour la mise en place complète (noVNC, websockify, etc).
 import eventlet
 eventlet.monkey_patch()
 
+import hmac
 import os
 from datetime import datetime
 
@@ -72,6 +73,27 @@ def login_required(view):
     def wrapped(*args, **kwargs):
         if not session.get("logged_in"):
             return redirect(url_for("login", next=request.path))
+        return view(*args, **kwargs)
+    wrapped.__name__ = view.__name__
+    return wrapped
+
+
+def api_token_required(view):
+    """Pour les routes API destinées à un script/job plutôt qu'à un
+    navigateur (voir /api/machines) : un en-tête `Authorization: Bearer
+    <token>` comparé à BASTION_API_TOKEN, pas la session cookie de
+    login_required. Si aucun token n'est configuré, la route répond 404
+    (fonctionnalité inexistante tant qu'elle n'est pas configurée, même
+    logique que credentials_enabled()/TLS/notifications ailleurs dans ce
+    projet). hmac.compare_digest plutôt que == pour comparer le secret,
+    afin d'éviter une attaque par timing."""
+    def wrapped(*args, **kwargs):
+        if not config.API_TOKEN:
+            abort(404)
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header[len("Bearer "):] if auth_header.startswith("Bearer ") else ""
+        if not token or not hmac.compare_digest(token, config.API_TOKEN):
+            abort(401)
         return view(*args, **kwargs)
     wrapped.__name__ = view.__name__
     return wrapped
@@ -382,12 +404,17 @@ def new_host():
         sudo_password = request.form.get("sudo_password") or None
         vnc_username = request.form.get("vnc_username") or None
         vnc_password = request.form.get("vnc_password") or None
+        # Cases à cocher parmi le catalogue géré (voir /tags) -- jamais de
+        # texte libre, store.add_machine filtre de toute façon contre le
+        # catalogue en profondeur si jamais une valeur inattendue arrivait.
+        tags = request.form.getlist("tags")
 
         if not name or not host or os_type not in ("linux", "windows"):
             return render_template(
                 "host_form.html", rooms=rooms,
                 error="Nom, hôte et OS sont obligatoires.",
                 credentials_enabled=credentials.credentials_enabled(),
+                tag_catalog=store.load_tag_catalog(),
             )
 
         store.add_machine(
@@ -401,6 +428,7 @@ def new_host():
             sudo_password=sudo_password,
             vnc_username=vnc_username,
             vnc_password=vnc_password,
+            tags=tags,
         )
         return redirect(url_for("dashboard"))
 
@@ -417,6 +445,7 @@ def new_host():
     return render_template(
         "host_form.html", rooms=rooms, error=None, prefill=prefill,
         credentials_enabled=credentials.credentials_enabled(),
+        tag_catalog=store.load_tag_catalog(),
     )
 
 
@@ -477,12 +506,14 @@ def edit_host(machine_id):
         vnc_username = request.form.get("vnc_username") or None
         vnc_password = request.form.get("vnc_password") or None
         clear_vnc_password = request.form.get("clear_vnc_password") == "on"
+        tags = request.form.getlist("tags")
 
         if not name or not host or os_type not in ("linux", "windows"):
             return render_template(
                 "host_form.html", rooms=rooms, machine=machine,
                 error="Nom, hôte et OS sont obligatoires.",
                 credentials_enabled=credentials.credentials_enabled(),
+                tag_catalog=store.load_tag_catalog(),
             )
 
         store.update_machine(
@@ -498,12 +529,14 @@ def edit_host(machine_id):
             vnc_username=vnc_username,
             vnc_password=vnc_password,
             clear_vnc_password=clear_vnc_password,
+            tags=tags,
         )
         return redirect(url_for("dashboard"))
 
     return render_template(
         "host_form.html", rooms=rooms, machine=machine, error=None,
         credentials_enabled=credentials.credentials_enabled(),
+        tag_catalog=store.load_tag_catalog(),
     )
 
 
@@ -551,6 +584,29 @@ def edit_room(room_id):
     return render_template("room_form.html", room=room, error=None)
 
 
+# --- Catalogue de tags (voir /hosts/new, /hosts/<id>/edit) --------------
+# Une machine ne peut porter qu'un tag présent dans ce catalogue -- ni
+# free-text côté formulaire (cases à cocher uniquement, voir
+# host_form.html) ni côté store.py (add_machine/update_machine filtrent
+# tout tag qui n'y figure pas), pour ne jamais laisser diverger les
+# graphies ("ecran"/"Ecran"/"écran") ou accumuler des tags fantômes.
+
+@app.route("/tags", methods=["GET", "POST"])
+@login_required
+def tags_page():
+    if request.method == "POST":
+        store.add_tag_to_catalog(request.form.get("name", ""))
+        return redirect(url_for("tags_page"))
+    return render_template("tags.html", tags=store.load_tag_catalog())
+
+
+@app.route("/tags/<tag>/delete", methods=["POST"])
+@login_required
+def delete_tag(tag):
+    store.delete_tag_from_catalog(tag)
+    return redirect(url_for("tags_page"))
+
+
 # --- Plan interactif (WYSIWYG) -----------------------------------------
 
 @app.route("/map/<room_id>")
@@ -582,6 +638,30 @@ def map_view(room_id):
         statuses=statuses,
         map_ratio_w=map_ratio[0], map_ratio_h=map_ratio[1],
     )
+
+
+# --- Inventaire en lecture seule pour un outil externe (Ansible...) ----
+# Distincte des routes /api/machines/<id>/... ci-dessous: authentifiée par
+# jeton (api_token_required) plutôt que par session navigateur
+# (login_required), et ne renvoie jamais de champ sensible (identifiants,
+# clé d'hôte, mot de passe VNC...) — voir la section dédiée du README.
+
+@app.route("/api/machines")
+@api_token_required
+def api_machines():
+    rooms_by_id = {r["id"]: r["name"] for r in store.load_rooms()}
+    return jsonify([
+        {
+            "id": m["id"],
+            "name": m["name"],
+            "host": m["host"],
+            "os": m["os"],
+            "ssh_port": m.get("ssh_port", 22),
+            "site": rooms_by_id.get(m.get("room")),
+            "tags": m.get("tags") or [],
+        }
+        for m in store.load_machines()
+    ])
 
 
 @app.route("/api/machines/<machine_id>/position", methods=["POST"])

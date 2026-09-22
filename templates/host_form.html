@@ -45,6 +45,25 @@
         {% endfor %}
       </select>
     </div>
+
+  </div>
+
+  <div class="field">
+    <label>Tags</label>
+    {% if tag_catalog %}
+    <div class="tag-checkboxes">
+      {% for tag in tag_catalog %}
+      <label class="checkbox-line">
+        <input type="checkbox" name="tags" value="{{ tag }}"
+               {{ "checked" if machine and tag in (machine.tags or []) else "" }}>
+        {{ tag }}
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="hint-box">Aucun tag défini pour l'instant.</p>
+    {% endif %}
+    <a href="{{ url_for('tags_page') }}">Gérer les tags</a>
   </div>
 
   <div class="section-sep">Identifiants (optionnel)</div>

@@ -220,6 +220,106 @@ def test_api_history_returns_timeline_json(client):
     assert resp.json["latency"][-1] == 5.0
 
 
+# --- GET /api/machines: inventaire en lecture seule pour un outil externe
+# (Ansible...), authentifié par jeton (api_token_required) plutôt que par
+# la session cookie de login_required -- voir app.py/README. ------------
+
+def test_api_machines_404s_when_token_not_configured(client):
+    # app_module.config.API_TOKEN vaut "" par défaut dans l'environnement
+    # de test (BASTION_API_TOKEN non définie) -- la route n'existe pas
+    # tant qu'elle n'est pas configurée, même sans authentification.
+    resp = client.get("/api/machines")
+    assert resp.status_code == 404
+
+
+def test_api_machines_rejects_missing_authorization_header(client, monkeypatch):
+    monkeypatch.setattr(app_module.config, "API_TOKEN", "sekret")
+    resp = client.get("/api/machines")
+    assert resp.status_code == 401
+
+
+def test_api_machines_rejects_wrong_token(client, monkeypatch):
+    monkeypatch.setattr(app_module.config, "API_TOKEN", "sekret")
+    resp = client.get("/api/machines", headers={"Authorization": "Bearer wrong"})
+    assert resp.status_code == 401
+
+
+def test_api_machines_returns_inventory_with_correct_token(client, monkeypatch):
+    monkeypatch.setattr(app_module.config, "API_TOKEN", "sekret")
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/rooms/new", data={"name": "Salle Expo"})
+    client.post("/tags", data={"name": "Ecran"})
+    client.post("/tags", data={"name": "gpio"})
+    client.post("/hosts/new", data={
+        "name": "Borne 1", "os": "linux", "host": "10.0.0.5", "ssh_port": "22",
+        "room": "salle-expo", "tags": ["ecran", "gpio"],
+    })
+
+    resp = client.get("/api/machines", headers={"Authorization": "Bearer sekret"})
+
+    assert resp.status_code == 200
+    machines = resp.json
+    assert len(machines) == 1
+    machine = machines[0]
+    assert machine == {
+        "id": "borne-1", "name": "Borne 1", "host": "10.0.0.5", "os": "linux",
+        "ssh_port": 22, "site": "Salle Expo", "tags": ["ecran", "gpio"],
+    }
+
+
+def test_api_machines_never_leaks_credentials(client, monkeypatch, credentials_key):
+    monkeypatch.setattr(app_module.config, "API_TOKEN", "sekret")
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Avec identifiants", "os": "linux", "host": "10.0.0.6", "ssh_port": "22",
+        "username": "root", "password": "hunter2",
+        "vnc_port": "5900", "vnc_password": "vncpass",
+    })
+
+    resp = client.get("/api/machines", headers={"Authorization": "Bearer sekret"})
+
+    assert resp.status_code == 200
+    machine = resp.json[0]
+    sensitive_keys = {
+        "credentials", "host_key", "vnc_password", "vnc_username",
+        "vnc_bridge_port", "vnc_tls_cert_fingerprint",
+    }
+    assert not sensitive_keys & machine.keys()
+
+
+# --- /tags: catalogue géré (voir store.add_tag_to_catalog/delete_tag_
+# from_catalog) -- une machine ne peut porter qu'un tag présent ici. ----
+
+def test_tags_page_requires_login(client):
+    resp = client.get("/tags")
+    assert resp.status_code == 302
+
+
+def test_tags_post_adds_a_tag(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/tags", data={"name": "Écran HD"})
+
+    resp = client.get("/tags")
+
+    assert resp.status_code == 200
+    assert b"ecran-hd" in resp.data  # slugifié
+
+
+def test_delete_tag_removes_it_from_catalog_and_machines(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/tags", data={"name": "ecran"})
+    client.post("/hosts/new", data={
+        "name": "Borne 1", "os": "linux", "host": "10.0.0.5", "ssh_port": "22",
+        "tags": ["ecran"],
+    })
+
+    resp = client.post("/tags/ecran/delete", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert b"ecran" not in resp.data
+    assert "tags" not in store.get_machine("borne-1")
+
+
 # --- /discover: découverte réseau (voir discovery.py) -------------------
 
 def test_discover_page_requires_login(client):

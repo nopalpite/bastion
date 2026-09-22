@@ -47,6 +47,117 @@ def test_add_machine_in_room_gets_a_position(machines_file):
     assert "x" in machine["position"] and "y" in machine["position"]
 
 
+# --- Catalogue de tags (voir /tags) : une machine ne peut porter qu'un
+# tag présent dans ce catalogue, jamais un tag inventé à la volée -----
+
+def test_add_tag_to_catalog(machines_file):
+    store.add_tag_to_catalog("Écran HD")
+    assert store.load_tag_catalog() == ["ecran-hd"]  # slugifié, accents repliés
+
+
+def test_add_tag_to_catalog_is_idempotent(machines_file):
+    store.add_tag_to_catalog("ecran")
+    store.add_tag_to_catalog("Ecran")  # même valeur une fois slugifiée
+    assert store.load_tag_catalog() == ["ecran"]
+
+
+def test_add_tag_to_catalog_ignores_blank(machines_file):
+    store.add_tag_to_catalog("   ")
+    assert store.load_tag_catalog() == []
+
+
+def test_delete_tag_from_catalog_also_removes_it_from_machines(machines_file):
+    store.add_tag_to_catalog("ecran")
+    store.add_tag_to_catalog("gpio")
+    machine_id = store.add_machine(
+        name="Borne 1", os_type="linux", host="10.0.0.1", tags=["ecran", "gpio"],
+    )
+
+    store.delete_tag_from_catalog("ecran")
+
+    assert store.load_tag_catalog() == ["gpio"]
+    assert store.get_machine(machine_id)["tags"] == ["gpio"]
+
+
+def test_delete_tag_from_catalog_removes_tags_key_when_machine_has_none_left(machines_file):
+    store.add_tag_to_catalog("ecran")
+    machine_id = store.add_machine(
+        name="Borne 1", os_type="linux", host="10.0.0.1", tags=["ecran"],
+    )
+
+    store.delete_tag_from_catalog("ecran")
+
+    assert "tags" not in store.get_machine(machine_id)
+
+
+def test_add_machine_stores_tags(machines_file):
+    store.add_tag_to_catalog("ecran")
+    store.add_tag_to_catalog("gpio")
+
+    machine_id = store.add_machine(
+        name="Borne 1", os_type="linux", host="10.0.0.1", tags=["ecran", "gpio"],
+    )
+
+    machine = store.get_machine(machine_id)
+    assert machine["tags"] == ["ecran", "gpio"]
+
+
+def test_add_machine_drops_tags_not_in_catalog(machines_file):
+    store.add_tag_to_catalog("ecran")
+
+    machine_id = store.add_machine(
+        name="Borne 1", os_type="linux", host="10.0.0.1",
+        tags=["ecran", "invente-a-la-volee"],
+    )
+
+    assert store.get_machine(machine_id)["tags"] == ["ecran"]
+
+
+def test_add_machine_without_tags_stores_nothing(machines_file):
+    machine_id = store.add_machine(name="Serveur", os_type="linux", host="10.0.0.1")
+    machine = store.get_machine(machine_id)
+    assert "tags" not in machine
+
+
+def test_update_machine_replaces_tags(machines_file):
+    store.add_tag_to_catalog("ecran")
+    store.add_tag_to_catalog("sans-ecran")
+    store.add_tag_to_catalog("gpio")
+    machine_id = store.add_machine(
+        name="Borne 1", os_type="linux", host="10.0.0.1", tags=["ecran"],
+    )
+
+    store.update_machine(
+        machine_id, name="Borne 1", os_type="linux", host="10.0.0.1",
+        tags=["sans-ecran", "gpio"],
+    )
+
+    machine = store.get_machine(machine_id)
+    assert machine["tags"] == ["sans-ecran", "gpio"]
+
+
+def test_update_machine_drops_tags_not_in_catalog(machines_file):
+    store.add_tag_to_catalog("ecran")
+    machine_id = store.add_machine(name="Borne 1", os_type="linux", host="10.0.0.1")
+
+    store.update_machine(
+        machine_id, name="Borne 1", os_type="linux", host="10.0.0.1",
+        tags=["ecran", "invente-a-la-volee"],
+    )
+
+    assert store.get_machine(machine_id)["tags"] == ["ecran"]
+
+
+def test_update_machine_without_tags_removes_them(machines_file):
+    store.add_tag_to_catalog("ecran")
+    machine_id = store.add_machine(
+        name="Borne 1", os_type="linux", host="10.0.0.1", tags=["ecran"],
+    )
+    store.update_machine(machine_id, name="Borne 1", os_type="linux", host="10.0.0.1")
+    machine = store.get_machine(machine_id)
+    assert "tags" not in machine
+
+
 def test_add_machine_stores_encrypted_credentials(machines_file, credentials_key):
     machine_id = store.add_machine(
         name="Serveur", os_type="linux", host="10.0.0.1",
