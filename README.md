@@ -32,6 +32,7 @@ dépendance lourde. Facile à lire, facile à étendre.
 - **Macros** (`/macros`) : bibliothèque de commandes SSH réutilisables, exécutables en un clic sur un pool de machines choisi dans l'interface — voir la section dédiée plus bas.
 - **Épinglage de la clé d'hôte SSH (TOFU)** : la première connexion à une machine mémorise sa clé publique ; si elle change ensuite, la connexion est bloquée avec une alerte explicite.
 - **Identifiants mémorisés (optionnel)** : si vous configurez `BASTION_CREDENTIALS_KEY`, vous pouvez enregistrer les identifiants SSH et/ou VNC d'une machine, chiffrés. Sans cette clé, la mémorisation est simplement désactivée (rien n'est stocké en clair par erreur). Sans identifiants mémorisés, noVNC les demande en interactif à la connexion.
+- **Authentification SSH par clé privée (optionnel)** : en plus (ou à la place) du mot de passe, une clé privée (RSA, Ed25519, ECDSA ou DSA, format PEM ou OpenSSH — chiffrée par passphrase ou non) se colle directement dans le formulaire d'hôte, chiffrée comme le mot de passe. Si les deux sont mémorisés, la clé est essayée en premier, le mot de passe en repli. Un champ "mot de passe sudo" séparé permet aux macros et actions rapides (reboot/shutdown) utilisant `sudo` de fonctionner même sur une machine authentifiée par clé seule — voir la section "Configuration" plus bas pour le détail.
 
 ## Plan interactif : alignement position <-> image, quel que soit l'écran
 
@@ -495,10 +496,30 @@ machines:
     vnc_port: 5901        # optionnel
     room: salle-a         # optionnel
     position: {x: 30, y: 45}   # optionnel, % du plan de la salle
-    # credentials:                 # optionnel, chiffré
+    # credentials:                       # optionnel, chiffré
     #   username: root
-    #   password: "gAAAAA...=="
+    #   password: "gAAAAA...=="          # optionnel si private_key est fourni
+    #   private_key: "gAAAAA...=="       # optionnel, texte PEM/OpenSSH chiffré
+    #   private_key_passphrase: "gAAAAA...=="  # optionnel, si la clé est chiffrée
+    #   sudo_password: "gAAAAA...=="     # optionnel, voir plus bas
 ```
+
+Mot de passe et clé privée peuvent être mémorisés ensemble pour une même
+machine : à la connexion, la clé est essayée en premier, le mot de passe
+en repli si l'authentification par clé échoue. Ces champs se remplissent
+depuis le formulaire d'hôte (jamais à écrire en clair à la main ici) —
+seule la clé **publique** correspondante doit être ajoutée au
+`authorized_keys` de la machine cible, comme pour toute authentification
+SSH par clé.
+
+Le champ `sudo_password` est indépendant de l'authentification SSH
+ci-dessus : les macros et actions rapides (reboot/shutdown) commençant
+par `sudo` ont besoin d'un mot de passe en clair à fournir sur `stdin`
+(`sudo -S`, voir `ssh_actions.py`) — celui-ci sert quand il est mémorisé,
+sinon le mot de passe SSH est réutilisé (comportement historique). Une
+machine authentifiée par clé privée seule doit donc renseigner ce champ
+si des macros/actions `sudo` doivent y fonctionner (ou configurer
+`NOPASSWD` côté machine cible pour les commandes concernées).
 
 Variables d'environnement utiles :
 

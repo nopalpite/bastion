@@ -13,30 +13,30 @@ import threading
 from flask import request
 from flask_socketio import emit
 
-import credentials
 import history
 import ssh_client
-from ssh_client import HostKeyChanged
+from ssh_client import HostKeyChanged, PrivateKeyError
 from store import get_machine
 
 # une session paramiko active par sid de socket.io
 sessions = {}
 
 # connexions en attente de confirmation suite à une alerte de clé d'hôte
-# changée: {sid: {"machine_id":..., "username":..., "password":..., "new_key": <PKey>}}
+# changée: {sid: {"machine_id":..., "username":..., "password":..., "pkey":..., "new_key": <PKey>}}
 pending_key_confirmation = {}
 
 
 def register_ssh_handlers(socketio):
 
-    def _attempt_connect(sid, machine, username, password):
+    def _attempt_connect(sid, machine, username, password, pkey=None):
         try:
-            client = ssh_client.connect(machine, username, password)
+            client = ssh_client.connect(machine, username, password, pkey=pkey)
         except HostKeyChanged as exc:
             pending_key_confirmation[sid] = {
                 "machine_id": machine["id"],
                 "username": username,
                 "password": password,
+                "pkey": pkey,
                 "new_key": exc.new_key,
             }
             socketio.emit(
@@ -96,18 +96,29 @@ def register_ssh_handlers(socketio):
 
         # Si l'utilisateur n'a rien saisi (formulaire sauté côté client
         # car des identifiants sont mémorisés), on retombe sur les
-        # identifiants stockés/chiffrés pour cette machine.
-        stored = machine.get("credentials") or {}
-        username = data.get("username") or stored.get("username")
+        # identifiants stockés (mot de passe ou clé) pour cette machine.
+        # Un mot de passe saisi à la main reste ad hoc et n'est jamais
+        # combiné à une clé mémorisée — voir resolve_stored_auth.
+        username = data.get("username")
         password = data.get("password")
-        if not password and stored.get("password"):
-            password = credentials.decrypt(stored["password"])
+        pkey = None
 
-        if not username or not password:
+        if not password:
+            try:
+                stored_username, stored_password, pkey, _sudo = (
+                    ssh_client.resolve_stored_auth(machine)
+                )
+            except PrivateKeyError as exc:
+                emit("ssh_error", {"message": f"Clé SSH mémorisée invalide : {exc}"})
+                return
+            username = username or stored_username
+            password = stored_password
+
+        if not username or not (password or pkey):
             emit("ssh_error", {"message": "Identifiants requis."})
             return
 
-        _attempt_connect(sid, machine, username, password)
+        _attempt_connect(sid, machine, username, password, pkey)
 
     @socketio.on("ssh_trust_new_key")
     def handle_trust_new_key(_data):
@@ -128,7 +139,7 @@ def register_ssh_handlers(socketio):
         )
 
         machine = get_machine(pending["machine_id"])
-        _attempt_connect(sid, machine, pending["username"], pending["password"])
+        _attempt_connect(sid, machine, pending["username"], pending["password"], pending["pkey"])
 
     @socketio.on("ssh_input")
     def handle_ssh_input(data):

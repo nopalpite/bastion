@@ -25,10 +25,9 @@ illimité.
 import eventlet
 import paramiko
 
-import credentials
 import ssh_client
 from ssh_actions import SUDO_REJECTED_MARKERS
-from ssh_client import HostKeyChanged
+from ssh_client import HostKeyChanged, PrivateKeyError
 
 POOL_SIZE = 16
 COMMAND_TIMEOUT_SECONDS = 30
@@ -47,9 +46,11 @@ def _prepare_sudo_command(command):
     """Si `command` commence par "sudo", insère les options -S -p ''
     juste après pour pouvoir lui fournir le mot de passe via stdin
     plutôt que via un terminal interactif (qu'exec_command n'alloue
-    pas) — même technique et même hypothèse que ssh_actions.py pour
-    reboot/shutdown : le mot de passe SSH sert aussi de mot de passe
-    sudo (cas le plus courant ; configurez NOPASSWD côté cible sinon).
+    pas) — même technique que ssh_actions.py pour reboot/shutdown. Le
+    mot de passe fourni est le mot de passe sudo dédié s'il est
+    mémorisé pour cette machine, sinon le mot de passe SSH (cas le plus
+    courant quand il n'y a pas d'authentification par clé ; configurez
+    NOPASSWD côté cible sinon — voir _run_on_machine).
 
     Un "sudo" plus loin dans la commande (après un &&, par exemple)
     n'est pas détecté — dans ce cas, écrivez plutôt des macros séparées
@@ -70,10 +71,13 @@ def _run_on_machine(machine, command, timeout):
     refusée, clé d'hôte changée...) est retournée comme un résultat en
     échec, pour ne jamais interrompre l'exécution des autres machines
     du pool."""
-    stored = machine.get("credentials") or {}
-    username = stored.get("username")
     try:
-        password = credentials.decrypt(stored["password"]) if stored.get("password") else None
+        username, password, pkey, sudo_password = ssh_client.resolve_stored_auth(machine)
+    except PrivateKeyError as exc:
+        return {
+            "machine_id": machine["id"], "machine_name": machine["name"], "ok": False,
+            "output": f"Clé SSH mémorisée invalide : {exc}",
+        }
     except Exception as exc:  # noqa: BLE001
         # decrypt() ne rattrape que InvalidToken en interne -- une clé
         # BASTION_CREDENTIALS_KEY malformée peut lever autre chose
@@ -83,22 +87,33 @@ def _run_on_machine(machine, command, timeout):
             "machine_id": machine["id"], "machine_name": machine["name"], "ok": False,
             "output": f"Échec du déchiffrement des identifiants mémorisés : {exc}",
         }
-    if not username or not password:
+    if not username or not (password or pkey):
         return {
             "machine_id": machine["id"], "machine_name": machine["name"], "ok": False,
             "output": "Aucun identifiant SSH mémorisé pour cette machine.",
         }
 
     prepared_command, needs_sudo_password = _prepare_sudo_command(command)
+    # Le mot de passe sudo dédié prime s'il est mémorisé ; à défaut, on
+    # retombe sur le mot de passe SSH (comportement historique, toujours
+    # valable pour une machine sans clé — voir le docstring du module).
+    effective_sudo_password = sudo_password or password
+    if needs_sudo_password and not effective_sudo_password:
+        return {
+            "machine_id": machine["id"], "machine_name": machine["name"], "ok": False,
+            "output": "Commande sudo mais aucun mot de passe sudo ni mot de passe SSH "
+                      "mémorisé pour cette machine (authentification par clé seule) — "
+                      "mémorisez un mot de passe sudo depuis le formulaire de l'hôte.",
+        }
 
     client = None
     try:
         with eventlet.Timeout(timeout, _MacroTimeout):
-            client = ssh_client.connect(machine, username, password, timeout=timeout)
+            client = ssh_client.connect(machine, username, password, pkey=pkey, timeout=timeout)
             stdin, stdout, stderr = client.exec_command(prepared_command, timeout=timeout)
             if needs_sudo_password:
                 try:
-                    stdin.write(password + "\n")
+                    stdin.write(effective_sudo_password + "\n")
                     stdin.flush()
                     stdin.channel.shutdown_write()
                 except OSError:
@@ -127,9 +142,10 @@ def _run_on_machine(machine, command, timeout):
             and any(marker in output.lower() for marker in SUDO_REJECTED_MARKERS)
         ):
             output += (
-                "\n(mot de passe sudo probablement refusé — le mot de passe SSH "
-                "sert aussi de mot de passe sudo ; configurez NOPASSWD sur la "
-                "machine cible si ce n'est pas le bon)"
+                "\n(mot de passe sudo probablement refusé — "
+                + ("mot de passe sudo dédié mémorisé " if sudo_password
+                   else "le mot de passe SSH sert aussi de mot de passe sudo ")
+                + "; configurez NOPASSWD sur la machine cible si ce n'est pas le bon)"
             )
         return {
             "machine_id": machine["id"], "machine_name": machine["name"],

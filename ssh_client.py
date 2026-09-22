@@ -13,9 +13,11 @@ Ce module implémente à la place un modèle "Trust On First Use" (TOFU):
     plutôt que de se connecter silencieusement.
 """
 import base64
+import io
 
 import paramiko
 
+import credentials
 from store import set_machine_host_key
 
 KEY_CLASSES = {
@@ -26,6 +28,12 @@ KEY_CLASSES = {
     "ecdsa-sha2-nistp521": paramiko.ECDSAKey,
 }
 
+# Classes de clé PRIVÉE à essayer dans l'ordre pour load_private_key
+# ci-dessous — sans rapport avec KEY_CLASSES ci-dessus (clés d'HÔTE,
+# publiques, dont le type est connu à l'avance via le nom d'algorithme
+# transmis par le serveur).
+_PRIVATE_KEY_CLASSES = (paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.RSAKey, paramiko.DSSKey)
+
 
 class HostKeyChanged(Exception):
     """Levée quand la clé présentée par l'hôte ne correspond pas à celle
@@ -35,6 +43,78 @@ class HostKeyChanged(Exception):
     def __init__(self, new_key, message):
         super().__init__(message)
         self.new_key = new_key
+
+
+class PrivateKeyError(Exception):
+    """Clé privée mémorisée invalide: format non reconnu, ou passphrase
+    manquante/incorrecte. Distincte d'une absence de clé (auquel cas
+    resolve_stored_auth renvoie simplement pkey=None) pour ne pas faire
+    passer une clé cassée inaperçue comme "pas de clé configurée"."""
+
+
+def load_private_key(key_text, passphrase=None):
+    """Charge une clé privée PEM ou OpenSSH, quel que soit son type
+    (RSA/Ed25519/ECDSA/DSA). Paramiko n'offre aucun chargeur générique
+    (PKey.from_private_key exige déjà de connaître la classe concrète —
+    PKey.__init__ lui-même n'accepte même pas de fichier) : on essaie
+    donc chaque classe connue dans l'ordre jusqu'à ce qu'une réussisse.
+
+    Vérifié empiriquement (paramiko 3.4.0): une clé chiffrée sans
+    passphrase fournie lève PasswordRequiredException dès la première
+    classe essayée, quel que soit le type réel de la clé pour le format
+    OpenSSH (le déchiffrement est vérifié avant que le type interne ne
+    soit lisible) — on la relève donc immédiatement avec un message
+    clair plutôt que de continuer à essayer les autres classes pour rien.
+    Une passphrase incorrecte ou un texte invalide lèvent SSHException
+    (générique) : on continue alors d'essayer les classes suivantes."""
+    last_exc = None
+    for key_cls in _PRIVATE_KEY_CLASSES:
+        try:
+            return key_cls.from_private_key(io.StringIO(key_text), password=passphrase)
+        except paramiko.PasswordRequiredException as exc:
+            raise PrivateKeyError(
+                "Cette clé privée est protégée par une passphrase — "
+                "renseignez-la dans le formulaire de l'hôte."
+            ) from exc
+        except paramiko.SSHException as exc:
+            last_exc = exc
+            continue
+    raise PrivateKeyError(f"Format de clé privée non reconnu : {last_exc}")
+
+
+def resolve_stored_auth(machine):
+    """Déchiffre les identifiants SSH mémorisés pour `machine` (voir
+    store.py/credentials.py) et prépare tout ce dont connect() a besoin.
+    Centralisé ici plutôt que dupliqué dans chaque appelant (ssh_ws.py,
+    macro_runner.py, ssh_actions.py) car le chargement de clé est non
+    trivial (voir load_private_key) — contrairement au simple
+    déchiffrement du mot de passe seul, qui lui reste dupliqué par
+    appelant (chacun a une logique de repli légèrement différente).
+
+    Retourne (username, password, pkey, sudo_password) — password/pkey/
+    sudo_password valent None s'ils ne sont pas mémorisés. Lève
+    PrivateKeyError si une clé EST mémorisée mais ne peut pas être
+    chargée, pour que l'appelant distingue ce cas d'une simple absence
+    de clé."""
+    stored = machine.get("credentials") or {}
+    username = stored.get("username")
+    password = credentials.decrypt(stored["password"]) if stored.get("password") else None
+
+    pkey = None
+    if stored.get("private_key"):
+        key_text = credentials.decrypt(stored["private_key"])
+        key_passphrase = (
+            credentials.decrypt(stored["private_key_passphrase"])
+            if stored.get("private_key_passphrase") else None
+        )
+        if key_text:
+            pkey = load_private_key(key_text, key_passphrase)
+
+    sudo_password = (
+        credentials.decrypt(stored["sudo_password"]) if stored.get("sudo_password") else None
+    )
+
+    return username, password, pkey, sudo_password
 
 
 class _TOFUPolicy(paramiko.MissingHostKeyPolicy):
@@ -62,10 +142,21 @@ def _deserialize_key(key_type, key_b64):
     return key_cls(data=base64.b64decode(key_b64))
 
 
-def connect(machine, username, password, timeout=6):
+def connect(machine, username, password=None, pkey=None, timeout=6):
     """Ouvre une connexion SSH vers `machine` en vérifiant/mémorisant sa
     clé d'hôte. Lève HostKeyChanged si la clé présentée diffère de celle
-    mémorisée précédemment."""
+    mémorisée précédemment.
+
+    password et pkey peuvent être fournis ensemble: paramiko essaie pkey
+    en premier et ne retombe sur password que si l'auth par clé échoue
+    (ordre documenté dans SSHClient.connect(), vérifié empiriquement) —
+    pas besoin de logique de repli ici.
+
+    look_for_keys/allow_agent sont explicitement désactivés: sans ça,
+    paramiko essaierait aussi, de façon implicite, un agent SSH ou des
+    clés dans ~/.ssh/ sur la machine hébergeant Bastion elle-même avant
+    le mot de passe — l'authentification doit rester strictement limitée
+    à ce qui est configuré pour cette machine dans Bastion."""
     client = paramiko.SSHClient()
     stored = machine.get("host_key")
     tofu = None
@@ -85,6 +176,9 @@ def connect(machine, username, password, timeout=6):
             port=machine.get("ssh_port", 22),
             username=username,
             password=password,
+            pkey=pkey,
+            look_for_keys=False,
+            allow_agent=False,
             timeout=timeout,
         )
     except paramiko.BadHostKeyException as exc:

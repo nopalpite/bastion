@@ -5,9 +5,11 @@ Gestion de sudo (Linux): exec_command() n'alloue pas de terminal (pty),
 donc si `sudo` doit demander un mot de passe interactivement, ça échoue
 immédiatement côté machine cible. La solution retenue ici: `sudo -S`, qui
 lit le mot de passe depuis l'entrée standard plutôt que depuis un
-terminal — on lui envoie donc le même mot de passe que celui utilisé pour
-la connexion SSH (hypothèse: c'est aussi le mot de passe sudo de cet
-utilisateur, ce qui est le cas le plus courant).
+terminal — on lui envoie le mot de passe sudo dédié s'il est mémorisé
+pour cette machine (voir store.py), sinon le mot de passe SSH utilisé
+pour la connexion (hypothèse: c'est aussi le mot de passe sudo de cet
+utilisateur, ce qui est le cas le plus courant sans authentification
+par clé).
 
 Si ce n'est pas votre cas (mot de passe sudo différent, ou pas de mot de
 passe sudo du tout), la bonne pratique est de configurer NOPASSWD pour
@@ -20,9 +22,8 @@ disposant des droits nécessaires pour arrêter/redémarrer.
 """
 import paramiko
 
-import credentials
 import ssh_client
-from ssh_client import HostKeyChanged
+from ssh_client import HostKeyChanged, PrivateKeyError
 from store import get_machine
 
 # Commandes Linux SANS le préfixe sudo: il est ajouté séparément par
@@ -59,14 +60,16 @@ class MissingCredentialsError(ActionError):
 
 
 def _resolve_credentials(machine, username, password):
-    """Priorité: identifiants fournis dans la requête > identifiants
-    mémorisés (déchiffrés) pour la machine."""
+    """Priorité: identifiants fournis dans la requête (mot de passe ad
+    hoc, jamais combiné à une clé mémorisée) > identifiants mémorisés
+    (mot de passe ou clé, voir ssh_client.resolve_stored_auth) pour la
+    machine. Retourne (username, password, pkey, sudo_password)."""
     stored = machine.get("credentials") or {}
-    resolved_username = username or stored.get("username")
-    resolved_password = password
-    if not resolved_password and stored.get("password"):
-        resolved_password = credentials.decrypt(stored["password"])
-    return resolved_username, resolved_password
+    if password:
+        return username or stored.get("username"), password, None, None
+
+    stored_username, stored_password, pkey, sudo_password = ssh_client.resolve_stored_auth(machine)
+    return username or stored_username, stored_password, pkey, sudo_password
 
 
 def _run_linux_action(client, base_command, password):
@@ -100,8 +103,9 @@ def _run_linux_action(client, base_command, password):
         if any(marker in lowered for marker in SUDO_REJECTED_MARKERS):
             raise MissingCredentialsError(
                 "Mot de passe sudo refusé sur la machine cible (le mot de "
-                "passe SSH est aussi utilisé pour sudo — configurez "
-                "NOPASSWD si ce n'est pas le bon mot de passe côté cible)."
+                "passe sudo mémorisé, ou à défaut le mot de passe SSH, est "
+                "utilisé pour sudo — configurez NOPASSWD si ce n'est pas le "
+                "bon mot de passe côté cible)."
             )
         raise ActionError(
             f"La commande a échoué (code {exit_status})"
@@ -139,17 +143,32 @@ def run_action(machine_id, action, username=None, password=None):
     else:
         raise ActionError(f"OS non supporté: {machine['os']}")
 
-    user, pwd = _resolve_credentials(machine, username, password)
-    if not user or not pwd:
+    try:
+        user, pwd, pkey, sudo_password = _resolve_credentials(machine, username, password)
+    except PrivateKeyError as exc:
+        raise MissingCredentialsError(f"Clé SSH mémorisée invalide : {exc}") from exc
+    if not user or not (pwd or pkey):
         raise MissingCredentialsError(
             "Identifiants requis: aucun identifiant mémorisé pour cette machine."
+        )
+    # sudo -S ne peut demander son mot de passe interactivement (voir le
+    # docstring du module) : sans mot de passe sudo dédié ni mot de passe
+    # SSH à réutiliser (authentification par clé seule), reboot/shutdown
+    # Linux ne peuvent pas fonctionner — mieux vaut le dire clairement
+    # avant de se connecter que d'échouer plus loin sur un stdin vide.
+    effective_sudo_password = sudo_password or pwd
+    if machine["os"] == "linux" and not effective_sudo_password:
+        raise MissingCredentialsError(
+            "Aucun mot de passe sudo ni mot de passe SSH mémorisé pour "
+            "cette machine (authentification par clé seule) — mémorisez "
+            "un mot de passe sudo depuis le formulaire de l'hôte."
         )
 
     client = None
     try:
-        client = ssh_client.connect(machine, user, pwd)
+        client = ssh_client.connect(machine, user, pwd, pkey=pkey)
         if machine["os"] == "linux":
-            _run_linux_action(client, base_command, pwd)
+            _run_linux_action(client, base_command, effective_sudo_password)
         else:
             _run_windows_action(client, base_command)
     except paramiko.AuthenticationException as exc:

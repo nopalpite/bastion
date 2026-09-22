@@ -144,7 +144,40 @@ def machines_without_room():
 
 def has_stored_credentials(machine):
     creds = machine.get("credentials") or {}
-    return bool(creds.get("username") and creds.get("password"))
+    return bool(creds.get("username") and (creds.get("password") or creds.get("private_key")))
+
+
+def _build_credentials(username, password=None, private_key=None,
+                        private_key_passphrase=None, sudo_password=None):
+    """Assemble le bloc `credentials` chiffré à partir des valeurs en
+    clair du formulaire hôte. Retourne None si aucune authentification
+    n'est réellement configurée (pas de username, ou ni mot de passe ni
+    clé) — utilisé par add_machine/update_machine, qui partagent cette
+    logique. sudo_password est indépendant de l'auth SSH (mot de passe
+    ou clé) mais vit dans le même bloc: ce sont des sous-champs d'un même
+    profil d'authentification pour cette machine, effacés ensemble par
+    clear_credentials."""
+    if not username:
+        return None
+    encrypted_password = credentials.encrypt(password) if password else None
+    encrypted_key = credentials.encrypt(private_key) if private_key else None
+    if not encrypted_password and not encrypted_key:
+        return None
+
+    creds = {"username": username}
+    if encrypted_password:
+        creds["password"] = encrypted_password
+    if encrypted_key:
+        creds["private_key"] = encrypted_key
+        encrypted_passphrase = (
+            credentials.encrypt(private_key_passphrase) if private_key_passphrase else None
+        )
+        if encrypted_passphrase:
+            creds["private_key_passphrase"] = encrypted_passphrase
+    encrypted_sudo = credentials.encrypt(sudo_password) if sudo_password else None
+    if encrypted_sudo:
+        creds["sudo_password"] = encrypted_sudo
+    return creds
 
 
 # --- Écriture ---------------------------------------------------------
@@ -189,6 +222,7 @@ def _next_vnc_bridge_port(data):
 
 def add_machine(name, os_type, host, ssh_port=22, vnc_port=None,
                  room_id=None, username=None, password=None,
+                 private_key=None, private_key_passphrase=None, sudo_password=None,
                  vnc_username=None, vnc_password=None):
     with _lock:
         data = _load()
@@ -216,9 +250,11 @@ def add_machine(name, os_type, host, ssh_port=22, vnc_port=None,
             # glisser-déposer depuis la page plan de la salle
             entry["position"] = _next_grid_position(data, room_id)
 
-        encrypted_password = credentials.encrypt(password) if password else None
-        if username and encrypted_password:
-            entry["credentials"] = {"username": username, "password": encrypted_password}
+        new_creds = _build_credentials(
+            username, password, private_key, private_key_passphrase, sudo_password,
+        )
+        if new_creds:
+            entry["credentials"] = new_creds
 
         data["machines"].append(entry)
         _save(data)
@@ -274,12 +310,14 @@ def set_machine_vnc_cert_fingerprint(machine_id, fingerprint):
 
 def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
                     room_id=None, username=None, password=None,
+                    private_key=None, private_key_passphrase=None, sudo_password=None,
                     clear_credentials=False, vnc_username=None, vnc_password=None,
                     clear_vnc_password=False):
     """Met à jour une machine existante en place (id inchangé même si le
-    nom change). Les identifiants ne sont modifiés que si username+password
-    sont fournis, ou effacés si clear_credentials est vrai — sinon ils
-    restent tels quels. Même logique pour vnc_password/clear_vnc_password."""
+    nom change). Les identifiants ne sont modifiés que si username et
+    (password ou private_key) sont fournis, ou effacés si
+    clear_credentials est vrai — sinon ils restent tels quels. Même
+    logique pour vnc_password/clear_vnc_password."""
     with _lock:
         data = _load()
         for m in data["machines"]:
@@ -327,10 +365,12 @@ def update_machine(machine_id, name, os_type, host, ssh_port=22, vnc_port=None,
 
             if clear_credentials:
                 m.pop("credentials", None)
-            elif username and password:
-                encrypted_password = credentials.encrypt(password)
-                if encrypted_password:
-                    m["credentials"] = {"username": username, "password": encrypted_password}
+            else:
+                new_creds = _build_credentials(
+                    username, password, private_key, private_key_passphrase, sudo_password,
+                )
+                if new_creds:
+                    m["credentials"] = new_creds
         _save(data)
     _regenerate_vnc_tokens()
 

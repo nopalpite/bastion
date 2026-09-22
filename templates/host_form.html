@@ -57,9 +57,11 @@
   {% elif machine and machine.credentials %}
   <p class="hint-box">
     Des identifiants sont déjà mémorisés pour cet hôte (utilisateur
-    <code>{{ machine.credentials.username }}</code>). Laissez les champs
-    ci-dessous vides pour les conserver, ou remplissez-les pour les
-    remplacer.
+    <code>{{ machine.credentials.username }}</code>{{ ", clé privée" if machine.credentials.private_key else "" }}{{ ", mot de passe sudo dédié" if machine.credentials.sudo_password else "" }}).
+    Laissez les champs ci-dessous vides pour les conserver, ou
+    remplissez-les pour les remplacer. Mot de passe et clé privée
+    peuvent être renseignés ensemble : la clé est essayée en premier,
+    le mot de passe en repli si l'authentification par clé échoue.
   </p>
   {% endif %}
 
@@ -74,10 +76,36 @@
     </div>
   </div>
 
+  <div class="field">
+    <label for="private_key">Clé privée SSH (optionnelle — RSA, Ed25519, ECDSA ou DSA, format PEM ou OpenSSH)</label>
+    <textarea id="private_key" name="private_key" rows="6" spellcheck="false"
+              placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
+              {{ 'disabled' if not credentials_enabled else '' }}></textarea>
+  </div>
+
+  <div class="form-grid">
+    <div class="field">
+      <label for="private_key_passphrase">Passphrase de la clé (si elle est chiffrée)</label>
+      <input type="password" id="private_key_passphrase" name="private_key_passphrase" {{ 'disabled' if not credentials_enabled else '' }}>
+    </div>
+    <div class="field">
+      <label for="sudo_password">Mot de passe sudo (si différent du mot de passe SSH)</label>
+      <input type="password" id="sudo_password" name="sudo_password" {{ 'disabled' if not credentials_enabled else '' }}>
+    </div>
+  </div>
+  <p class="hint-box">
+    Le mot de passe sudo n'est utilisé que pour les macros et actions
+    rapides (reboot/shutdown) commençant par <code>sudo</code> — il est
+    indépendant de l'authentification SSH ci-dessus. Sans lui, le mot de
+    passe SSH mémorisé est réutilisé pour sudo ; une machine
+    authentifiée par clé privée seule doit renseigner ce champ pour que
+    les commandes sudo fonctionnent.
+  </p>
+
   {% if credentials_enabled and machine and machine.credentials %}
   <label class="checkbox-line">
     <input type="checkbox" name="clear_credentials">
-    Supprimer les identifiants mémorisés pour cet hôte
+    Supprimer tous les identifiants mémorisés pour cet hôte (mot de passe, clé, mot de passe sudo)
   </label>
   {% endif %}
 

@@ -6,7 +6,8 @@ import paramiko
 import pytest
 
 import macro_runner
-from ssh_client import HostKeyChanged
+import ssh_client
+from ssh_client import HostKeyChanged, PrivateKeyError
 
 
 class FakeStream:
@@ -75,7 +76,10 @@ def _machine_without_creds():
 
 @pytest.fixture(autouse=True)
 def _decrypt(monkeypatch):
-    monkeypatch.setattr(macro_runner.credentials, "decrypt", lambda blob: "hunter2")
+    # resolve_stored_auth() (dans ssh_client.py) fait le déchiffrement pour
+    # macro_runner.py désormais -- voir tests/test_ssh_client.py pour les
+    # tests dédiés au chargement de clé/mot de passe sudo eux-mêmes.
+    monkeypatch.setattr(ssh_client.credentials, "decrypt", lambda blob: "hunter2")
 
 
 def test_run_on_machine_fails_without_stored_credentials():
@@ -92,7 +96,7 @@ def test_run_on_machine_fails_gracefully_when_decrypt_raises(monkeypatch):
     def raise_value_error(blob):
         raise ValueError("clé de chiffrement invalide")
 
-    monkeypatch.setattr(macro_runner.credentials, "decrypt", raise_value_error)
+    monkeypatch.setattr(ssh_client.credentials, "decrypt", raise_value_error)
 
     result = macro_runner._run_on_machine(MACHINE_WITH_CREDS, "uptime", timeout=5)
 
@@ -103,7 +107,7 @@ def test_run_on_machine_fails_gracefully_when_decrypt_raises(monkeypatch):
 def test_run_on_machine_connects_with_decrypted_password(monkeypatch):
     connect_calls = []
 
-    def fake_connect(machine, username, password, timeout=None):
+    def fake_connect(machine, username, password, pkey=None, timeout=None):
         connect_calls.append((machine["id"], username, password))
         return FakeSSHClient()
 
@@ -256,6 +260,65 @@ def test_run_on_machine_sends_password_on_stdin_for_sudo_command(monkeypatch):
     assert client.stdin.written == "hunter2\n"
     assert client.stdin.flushed
     assert client.stdin.shutdown
+
+
+def test_run_on_machine_uses_dedicated_sudo_password_over_ssh_password(monkeypatch):
+    machine = {
+        "id": "m3", "name": "Avec sudo dédié", "host": "10.0.0.3",
+        "credentials": {
+            "username": "root", "password": "encrypted-blob", "sudo_password": "encrypted-sudo",
+        },
+    }
+    monkeypatch.setattr(
+        ssh_client.credentials, "decrypt",
+        lambda blob: "sudopass" if blob == "encrypted-sudo" else "hunter2",
+    )
+    client = FakeSSHClient(exit_status=0)
+    monkeypatch.setattr(macro_runner.ssh_client, "connect", lambda *a, **k: client)
+
+    macro_runner._run_on_machine(machine, "sudo apt update", timeout=5)
+
+    assert client.stdin.written == "sudopass\n"
+
+
+def test_run_on_machine_reports_invalid_stored_key(monkeypatch):
+    machine = {
+        "id": "m5", "name": "Clé cassée", "host": "10.0.0.5",
+        "credentials": {"username": "root", "private_key": "encrypted-garbage"},
+    }
+    def raise_invalid_key(text, passphrase=None):
+        raise PrivateKeyError("format non reconnu")
+
+    monkeypatch.setattr(ssh_client.credentials, "decrypt", lambda blob: "pas une clé")
+    monkeypatch.setattr(ssh_client, "load_private_key", raise_invalid_key)
+
+    result = macro_runner._run_on_machine(machine, "uptime", timeout=5)
+
+    assert result["ok"] is False
+    assert "clé ssh mémorisée invalide" in result["output"].lower()
+
+
+def test_run_on_machine_fails_clearly_for_sudo_with_key_only_auth(monkeypatch):
+    """Authentification par clé seule, aucun mot de passe sudo mémorisé:
+    sudo -S n'a rien à envoyer sur stdin -- signalé avant même de se
+    connecter plutôt que d'échouer de façon confuse plus loin."""
+    machine = {
+        "id": "m4", "name": "Clé seule", "host": "10.0.0.4",
+        "credentials": {"username": "root", "private_key": "encrypted-key"},
+    }
+    monkeypatch.setattr(ssh_client.credentials, "decrypt", lambda blob: "root-key-pem")
+    monkeypatch.setattr(ssh_client, "load_private_key", lambda text, passphrase=None: object())
+    connect_calls = []
+    monkeypatch.setattr(
+        macro_runner.ssh_client, "connect",
+        lambda *a, **k: connect_calls.append(1) or FakeSSHClient(),
+    )
+
+    result = macro_runner._run_on_machine(machine, "sudo apt update", timeout=5)
+
+    assert result["ok"] is False
+    assert "mot de passe sudo" in result["output"].lower()
+    assert connect_calls == []  # jamais tenté de se connecter
 
 
 def test_run_on_machine_does_not_write_stdin_for_non_sudo_command(monkeypatch):

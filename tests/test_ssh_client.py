@@ -5,7 +5,10 @@ paramiko peut produire (1ère connexion, clé connue qui correspond, clé qui
 a changé)."""
 import paramiko
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519, rsa
 
+import credentials
 import ssh_client
 
 
@@ -42,7 +45,11 @@ class FakeSSHClient:
     def set_missing_host_key_policy(self, policy):
         self.policy = policy
 
-    def connect(self, hostname, port, username, password, timeout):
+    def connect(self, hostname, port, username, password, pkey, look_for_keys,
+                allow_agent, timeout):
+        self.connect_kwargs = {
+            "pkey": pkey, "look_for_keys": look_for_keys, "allow_agent": allow_agent,
+        }
         if self._raise_mismatch is not None:
             raise self._raise_mismatch
         if self._new_key_on_connect is not None:
@@ -109,3 +116,146 @@ def test_fingerprint_formats_bytes_as_hex_pairs():
 
 def test_fingerprint_none_key_returns_none():
     assert ssh_client.fingerprint(None) is None
+
+
+def test_connect_disables_agent_and_key_lookup(monkeypatch):
+    """Sans ça, paramiko essaierait aussi, de façon implicite, un agent SSH
+    ou des clés dans ~/.ssh/ sur la machine hébergeant Bastion elle-même
+    avant le mot de passe/la clé mémorisée — voir le docstring de connect()."""
+    created = {}
+
+    def make_fake():
+        created["client"] = FakeSSHClient()
+        return created["client"]
+
+    monkeypatch.setattr(ssh_client.paramiko, "SSHClient", make_fake)
+
+    ssh_client.connect({"id": "srv-1", "host": "10.0.0.1"}, "user", "pass")
+
+    assert created["client"].connect_kwargs["look_for_keys"] is False
+    assert created["client"].connect_kwargs["allow_agent"] is False
+
+
+def test_connect_passes_pkey_through(monkeypatch):
+    created = {}
+    monkeypatch.setattr(
+        ssh_client.paramiko, "SSHClient",
+        lambda: created.setdefault("client", FakeSSHClient()) or created["client"],
+    )
+    sentinel_pkey = object()
+
+    ssh_client.connect({"id": "srv-1", "host": "10.0.0.1"}, "user", pkey=sentinel_pkey)
+
+    assert created["client"].connect_kwargs["pkey"] is sentinel_pkey
+
+
+# --- load_private_key: pas de chargeur générique dans paramiko, on essaie
+# chaque classe concrète dans l'ordre (voir le docstring de la fonction). --
+
+def _ed25519_pem(passphrase=None):
+    key = ed25519.Ed25519PrivateKey.generate()
+    encryption = (
+        serialization.BestAvailableEncryption(passphrase.encode())
+        if passphrase else serialization.NoEncryption()
+    )
+    return key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.OpenSSH,
+        encryption_algorithm=encryption,
+    ).decode()
+
+
+def _rsa_pem(passphrase=None):
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    encryption = (
+        serialization.BestAvailableEncryption(passphrase.encode())
+        if passphrase else serialization.NoEncryption()
+    )
+    return key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.OpenSSH,
+        encryption_algorithm=encryption,
+    ).decode()
+
+
+def test_load_private_key_ed25519_without_passphrase():
+    key = ssh_client.load_private_key(_ed25519_pem())
+    assert isinstance(key, paramiko.Ed25519Key)
+
+
+def test_load_private_key_rsa_with_correct_passphrase():
+    key = ssh_client.load_private_key(_rsa_pem("hunter2"), "hunter2")
+    assert isinstance(key, paramiko.RSAKey)
+
+
+def test_load_private_key_encrypted_without_passphrase_raises_clear_error():
+    with pytest.raises(ssh_client.PrivateKeyError, match="passphrase"):
+        ssh_client.load_private_key(_rsa_pem("hunter2"))
+
+
+def test_load_private_key_wrong_passphrase_raises():
+    with pytest.raises(ssh_client.PrivateKeyError):
+        ssh_client.load_private_key(_rsa_pem("hunter2"), "WRONG")
+
+
+def test_load_private_key_garbage_text_raises():
+    with pytest.raises(ssh_client.PrivateKeyError):
+        ssh_client.load_private_key("pas une clé du tout")
+
+
+# --- resolve_stored_auth: centralise le déchiffrement des identifiants
+# mémorisés (mot de passe, clé, mot de passe sudo) pour les 3 appelants
+# (ssh_ws.py, macro_runner.py, ssh_actions.py). ------------------------
+
+def test_resolve_stored_auth_with_password_only(credentials_key):
+    machine = {
+        "credentials": {
+            "username": "root",
+            "password": credentials.encrypt("hunter2"),
+        },
+    }
+    username, password, pkey, sudo_password = ssh_client.resolve_stored_auth(machine)
+    assert (username, password, pkey, sudo_password) == ("root", "hunter2", None, None)
+
+
+def test_resolve_stored_auth_with_key_and_passphrase(credentials_key):
+    key_text = _ed25519_pem()
+    machine = {
+        "credentials": {
+            "username": "root",
+            "private_key": credentials.encrypt(key_text),
+        },
+    }
+    username, password, pkey, sudo_password = ssh_client.resolve_stored_auth(machine)
+    assert username == "root"
+    assert password is None
+    assert isinstance(pkey, paramiko.Ed25519Key)
+    assert sudo_password is None
+
+
+def test_resolve_stored_auth_decrypts_sudo_password_independently(credentials_key):
+    machine = {
+        "credentials": {
+            "username": "root",
+            "private_key": credentials.encrypt(_ed25519_pem()),
+            "sudo_password": credentials.encrypt("sudopass"),
+        },
+    }
+    _u, _p, pkey, sudo_password = ssh_client.resolve_stored_auth(machine)
+    assert pkey is not None
+    assert sudo_password == "sudopass"
+
+
+def test_resolve_stored_auth_raises_on_invalid_stored_key(credentials_key):
+    machine = {
+        "credentials": {
+            "username": "root",
+            "private_key": credentials.encrypt("pas une clé du tout"),
+        },
+    }
+    with pytest.raises(ssh_client.PrivateKeyError):
+        ssh_client.resolve_stored_auth(machine)
+
+
+def test_resolve_stored_auth_with_no_stored_credentials():
+    assert ssh_client.resolve_stored_auth({}) == (None, None, None, None)

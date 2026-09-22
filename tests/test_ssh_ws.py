@@ -71,7 +71,9 @@ def _clear_ssh_ws_state():
 def wired_socketio(monkeypatch):
     socketio = FakeSocketIO()
     monkeypatch.setattr(ssh_ws, "request", FakeRequest())
-    monkeypatch.setattr(ssh_ws.ssh_client, "connect", lambda machine, u, p: FakeSSHClient())
+    monkeypatch.setattr(
+        ssh_ws.ssh_client, "connect", lambda machine, u, p, pkey=None: FakeSSHClient(),
+    )
     monkeypatch.setattr(
         ssh_ws, "get_machine",
         lambda mid: {"id": mid, "name": "Serveur Test", "host": "10.0.0.1"},
@@ -116,6 +118,56 @@ def test_session_start_failure_does_not_block_connection(wired_socketio, monkeyp
     # La connexion SSH elle-même doit réussir malgré l'échec d'enregistrement.
     assert "sid-1" in ssh_ws.sessions
     assert ssh_ws.sessions["sid-1"]["session_id"] is None
+
+
+def test_ssh_connect_falls_back_to_stored_key_when_no_password_typed(
+    wired_socketio, monkeypatch, history_db,
+):
+    """Formulaire sauté côté client (has_stored_creds) : seul machine_id
+    est envoyé, la clé mémorisée doit suffire — voir resolve_stored_auth."""
+    sentinel_pkey = object()
+    monkeypatch.setattr(
+        ssh_ws, "get_machine",
+        lambda mid: {"id": mid, "name": "Serveur Test", "host": "10.0.0.1",
+                      "credentials": {"username": "root"}},
+    )
+    monkeypatch.setattr(
+        ssh_ws.ssh_client, "resolve_stored_auth",
+        lambda machine: ("root", None, sentinel_pkey, None),
+    )
+    connect_calls = []
+    monkeypatch.setattr(
+        ssh_ws.ssh_client, "connect",
+        lambda machine, u, p, pkey=None: connect_calls.append((u, p, pkey)) or FakeSSHClient(),
+    )
+
+    wired_socketio.handlers["ssh_connect"]({"machine_id": "m1"})
+
+    assert connect_calls == [("root", None, sentinel_pkey)]
+    assert "sid-1" in ssh_ws.sessions
+
+
+def test_ssh_connect_reports_invalid_stored_key(wired_socketio, monkeypatch):
+    """handle_ssh_connect utilise emit() (envoi au seul client courant), pas
+    socketio.emit(room=...) comme le reste du module — donc monkeypatché
+    séparément ici plutôt que lu depuis wired_socketio.emitted."""
+    def boom(machine):
+        raise ssh_ws.PrivateKeyError("format non reconnu")
+
+    emitted = []
+    monkeypatch.setattr(ssh_ws, "emit", lambda event, data=None: emitted.append((event, data)))
+    monkeypatch.setattr(
+        ssh_ws, "get_machine",
+        lambda mid: {"id": mid, "name": "Serveur Test", "host": "10.0.0.1",
+                      "credentials": {"username": "root", "private_key": "xx"}},
+    )
+    monkeypatch.setattr(ssh_ws.ssh_client, "resolve_stored_auth", boom)
+
+    wired_socketio.handlers["ssh_connect"]({"machine_id": "m1"})
+
+    assert emitted[-1][0] == "ssh_error"
+    assert "format non reconnu" in emitted[-1][1]["message"]
+    assert "sid-1" not in ssh_ws.sessions
 
 
 def test_disconnect_tolerates_history_failure(wired_socketio, monkeypatch, history_db):

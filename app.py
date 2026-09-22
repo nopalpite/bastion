@@ -377,6 +377,9 @@ def new_host():
         room_id = request.form.get("room") or None
         username = request.form.get("username") or None
         password = request.form.get("password") or None
+        private_key = request.form.get("private_key", "").strip() or None
+        private_key_passphrase = request.form.get("private_key_passphrase") or None
+        sudo_password = request.form.get("sudo_password") or None
         vnc_username = request.form.get("vnc_username") or None
         vnc_password = request.form.get("vnc_password") or None
 
@@ -393,6 +396,9 @@ def new_host():
             room_id=room_id,
             username=username,
             password=password,
+            private_key=private_key,
+            private_key_passphrase=private_key_passphrase,
+            sudo_password=sudo_password,
             vnc_username=vnc_username,
             vnc_password=vnc_password,
         )
@@ -465,6 +471,9 @@ def edit_host(machine_id):
         clear_credentials = request.form.get("clear_credentials") == "on"
         username = request.form.get("username") or None
         password = request.form.get("password") or None
+        private_key = request.form.get("private_key", "").strip() or None
+        private_key_passphrase = request.form.get("private_key_passphrase") or None
+        sudo_password = request.form.get("sudo_password") or None
         vnc_username = request.form.get("vnc_username") or None
         vnc_password = request.form.get("vnc_password") or None
         clear_vnc_password = request.form.get("clear_vnc_password") == "on"
@@ -482,6 +491,9 @@ def edit_host(machine_id):
             room_id=room_id,
             username=username,
             password=password,
+            private_key=private_key,
+            private_key_passphrase=private_key_passphrase,
+            sudo_password=sudo_password,
             clear_credentials=clear_credentials,
             vnc_username=vnc_username,
             vnc_password=vnc_password,

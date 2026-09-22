@@ -58,6 +58,28 @@ def test_add_machine_stores_encrypted_credentials(machines_file, credentials_key
     assert store.has_stored_credentials(machine)
 
 
+def test_add_machine_stores_private_key_and_sudo_password(machines_file, credentials_key):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1",
+        username="root", private_key="-----BEGIN...-----", sudo_password="sudopass",
+    )
+    machine = store.get_machine(machine_id)
+    assert machine["credentials"]["private_key"] != "-----BEGIN...-----"  # jamais en clair
+    assert "password" not in machine["credentials"]
+    assert machine["credentials"]["sudo_password"] != "sudopass"
+    assert store.has_stored_credentials(machine)  # une clé seule suffit
+
+
+def test_add_machine_without_username_stores_nothing(machines_file, credentials_key):
+    # Un mot de passe/clé sans utilisateur n'est pas exploitable pour se
+    # connecter -- rien à mémoriser.
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", password="hunter2",
+    )
+    machine = store.get_machine(machine_id)
+    assert "credentials" not in machine
+
+
 def test_add_machine_without_credentials_key_stores_nothing(machines_file):
     # pas de fixture credentials_key ici: BASTION_CREDENTIALS_KEY absente
     machine_id = store.add_machine(
@@ -93,6 +115,47 @@ def test_update_machine_clear_credentials(machines_file, credentials_key):
     )
     machine = store.get_machine(machine_id)
     assert "credentials" not in machine
+
+
+def test_update_machine_replaces_password_with_private_key(machines_file, credentials_key):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", username="root", password="hunter2",
+    )
+    store.update_machine(
+        machine_id, name="Serveur", os_type="linux", host="10.0.0.1",
+        username="root", private_key="-----BEGIN...-----",
+    )
+    machine = store.get_machine(machine_id)
+    assert "password" not in machine["credentials"]
+    assert "private_key" in machine["credentials"]
+
+
+def test_update_machine_clear_credentials_also_clears_key_and_sudo_password(
+    machines_file, credentials_key,
+):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1",
+        username="root", private_key="-----BEGIN...-----", sudo_password="sudopass",
+    )
+    store.update_machine(
+        machine_id, name="Serveur", os_type="linux", host="10.0.0.1", clear_credentials=True,
+    )
+    machine = store.get_machine(machine_id)
+    assert "credentials" not in machine
+
+
+def test_update_machine_leaves_credentials_untouched_when_fields_blank(
+    machines_file, credentials_key,
+):
+    machine_id = store.add_machine(
+        name="Serveur", os_type="linux", host="10.0.0.1", username="root", password="hunter2",
+    )
+    before = store.get_machine(machine_id)["credentials"]
+
+    store.update_machine(machine_id, name="Serveur (renommé)", os_type="linux", host="10.0.0.1")
+
+    after = store.get_machine(machine_id)["credentials"]
+    assert after == before
 
 
 def test_delete_machine(machines_file):
