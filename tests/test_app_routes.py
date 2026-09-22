@@ -316,7 +316,11 @@ def test_delete_tag_removes_it_from_catalog_and_machines(client):
     resp = client.post("/tags/ecran/delete", follow_redirects=True)
 
     assert resp.status_code == 200
-    assert b"ecran" not in resp.data
+    # Pas de scraping du HTML rendu ici: tags.html a un placeholder
+    # "ecran" sur le champ d'ajout, toujours présent quel que soit l'état
+    # du catalogue -- vérifier l'état réel via store plutôt qu'un
+    # substring fragile.
+    assert store.load_tag_catalog() == []
     assert "tags" not in store.get_machine("borne-1")
 
 
