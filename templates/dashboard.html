@@ -41,6 +41,15 @@
 </div>
 {% endif %}
 
+{% if tag_catalog %}
+<div class="tag-filters" id="tag-filters">
+  <span class="tag-filters-label">Tags :</span>
+  {% for tag in tag_catalog %}
+  <button type="button" class="tag-filter-chip" data-tag="{{ tag }}">{{ tag }}</button>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if rooms %}
 <div class="room-tabs">
   <a class="tab {{ 'active' if not active_room else '' }}" href="{{ url_for('dashboard') }}">Toutes</a>
@@ -66,7 +75,8 @@
     {% for m in group.machines %}
     {% set st = statuses.get(m.id) %}
     <div class="machine-card" data-id="{{ m.id }}"
-         data-search="{{ (m.name ~ ' ' ~ m.host ~ ' ' ~ m.os) | lower }}">
+         data-search="{{ (m.name ~ ' ' ~ m.host ~ ' ' ~ m.os) | lower }}"
+         data-tags="{{ (m.tags or [])|join(',') }}">
       <div class="row1">
         <span class="machine-name">{{ m.name }}</span>
         <span class="status-dot {{ st.status if st else 'unknown' }}" data-role="dot"></span>
@@ -97,7 +107,7 @@
 <p class="empty-state">Aucune machine pour l'instant. <a href="{{ url_for('new_host') }}">Ajoutez-en une</a>.</p>
 {% endfor %}
 
-<p class="empty-state" id="search-empty-state" hidden>Aucune machine ne correspond à la recherche.</p>
+<p class="empty-state" id="search-empty-state" hidden>Aucune machine ne correspond à la recherche/aux tags sélectionnés.</p>
 </div>
 
 <!-- Zone des sessions SSH/VNC ouvertes en onglets (voir tabs.js) -->

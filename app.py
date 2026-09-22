@@ -149,6 +149,11 @@ def dashboard():
         statuses=statuses,
         active_room=room_id_filter,
         total_count=len(machines),
+        # Filtre par tag(s) : purement côté client (voir dashboard.js),
+        # comme la recherche texte -- toutes les machines du filtre salle
+        # sont déjà dans le DOM, seul le catalogue est nécessaire ici pour
+        # construire les boutons.
+        tag_catalog=store.load_tag_catalog(),
     )
 
 

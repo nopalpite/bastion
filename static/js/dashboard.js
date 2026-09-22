@@ -73,16 +73,24 @@ toggleLayoutBtn.addEventListener("click", () => {
 //
 // Purement côté client (tout est déjà dans le DOM, filtré uniquement par
 // salle côté serveur) : pas d'aller-retour réseau, filtrage instantané à
-// chaque frappe. Un groupe de salle sans aucune carte visible se masque
-// entièrement plutôt que de laisser un en-tête de salle vide affiché.
+// chaque frappe/clic. Un groupe de salle sans aucune carte visible se
+// masque entièrement plutôt que de laisser un en-tête de salle vide
+// affiché. Recherche texte et tags sélectionnés se combinent en ET (une
+// carte doit satisfaire les deux) ; entre eux, les tags sélectionnés se
+// combinent aussi en ET (une combinaison, pas "n'importe lequel") -- une
+// machine doit porter TOUS les tags cochés pour rester visible.
 const searchInput = document.getElementById("machine-search");
+const selectedTags = new Set();
 
-function applyMachineFilter(query) {
-  const q = query.trim().toLowerCase();
+function applyMachineFilter() {
+  const q = (searchInput ? searchInput.value : "").trim().toLowerCase();
   let anyVisible = false;
 
   document.querySelectorAll(".machine-card").forEach((card) => {
-    const visible = q === "" || (card.dataset.search || "").includes(q);
+    const matchesSearch = q === "" || (card.dataset.search || "").includes(q);
+    const cardTags = (card.dataset.tags || "").split(",").filter(Boolean);
+    const matchesTags = [...selectedTags].every((tag) => cardTags.includes(tag));
+    const visible = matchesSearch && matchesTags;
     card.classList.toggle("filtered-out", !visible);
     if (visible) anyVisible = true;
   });
@@ -93,9 +101,23 @@ function applyMachineFilter(query) {
   });
 
   const emptyState = document.getElementById("search-empty-state");
-  if (emptyState) emptyState.hidden = !(q !== "" && !anyVisible);
+  const filtering = q !== "" || selectedTags.size > 0;
+  if (emptyState) emptyState.hidden = !(filtering && !anyVisible);
 }
 
 if (searchInput) {
-  searchInput.addEventListener("input", () => applyMachineFilter(searchInput.value));
+  searchInput.addEventListener("input", () => applyMachineFilter());
 }
+
+document.querySelectorAll(".tag-filter-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const tag = chip.dataset.tag;
+    if (selectedTags.has(tag)) {
+      selectedTags.delete(tag);
+    } else {
+      selectedTags.add(tag);
+    }
+    chip.classList.toggle("active", selectedTags.has(tag));
+    applyMachineFilter();
+  });
+});

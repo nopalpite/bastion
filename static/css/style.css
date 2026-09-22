@@ -581,6 +581,36 @@ body.page-map .container { max-width: none; }
 
 .machine-card.filtered-out, .room-group.filtered-out { display: none; }
 
+.tag-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.tag-filters-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+.tag-filter-chip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.tag-filter-chip:hover { color: var(--text); border-color: var(--text-dim); }
+.tag-filter-chip.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(61,220,214,0.08);
+}
+
 .room-tabs {
   display: flex;
   gap: 6px;
