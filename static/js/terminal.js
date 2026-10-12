@@ -25,12 +25,19 @@ document.body.style.overflow = "hidden";
 // l'utilise pour redimensionner .session-layout à cette taille exacte, pour
 // qu'il n'y ait justement jamais besoin de scroller quoi que ce soit.
 const sessionLayoutEl = document.getElementById("session-layout");
-const topbarEl = document.querySelector(".topbar");
 
 function syncSessionLayoutViewport() {
   if (!window.visualViewport || sessionLayoutEl.style.display === "none") return;
-  const topbarHeight = topbarEl ? topbarEl.offsetHeight : 0;
-  sessionLayoutEl.style.height = `${window.visualViewport.height - topbarHeight}px`;
+  // Espace déjà pris au-dessus du layout (.session-header, bannière...),
+  // mesuré plutôt que supposé : cette page n'a jamais de .topbar (elle
+  // remplace tout le {% block body %} de base.html), et la hauteur de
+  // l'en-tête varie (44px intégrée dans un onglet sans le bouton "Retour",
+  // 49px sinon). Retirer une hauteur supposée fausse faisait déborder le
+  // layout du bas de la fenêtre -- donc cacher les dernières lignes du
+  // terminal -- dès qu'un événement visualViewport se déclenchait, y
+  // compris sur desktop (redimensionnement de la fenêtre/de l'iframe).
+  const topOffset = sessionLayoutEl.getBoundingClientRect().top + window.scrollY;
+  sessionLayoutEl.style.height = `${window.visualViewport.height - topOffset}px`;
   if (fitAddon) fitAddon.fit();
   if (term) socket.emit("ssh_resize", { cols: term.cols, rows: term.rows });
 }
