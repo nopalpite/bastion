@@ -2,6 +2,7 @@
 {% block title %}VNC — {{ machine.name }}{% endblock %}
 
 {% block body %}
+<div class="vnc-page">
 <div class="session-header">
   <span>VNC · <span class="machine-name">{{ machine.name }}</span> ({{ machine.host }})</span>
   <span class="header-actions">
@@ -49,6 +50,7 @@
 </div>
 
 <div id="vnc-screen" style="display:none;"></div>
+</div>
 
 <!--
   noVNC n'est pas distribué via pip: récupérez-le et placez son dossier

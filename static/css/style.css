@@ -321,10 +321,17 @@ body.page-map .container { max-width: none; }
 /* Hauteur bornée nécessaire pour que noVNC (scaleViewport, voir vnc.html)
    sache dans quel espace adapter l'écran distant — sans ça, son wrapper
    interne (height:100%) hérite d'une hauteur indéfinie et l'affichage ne
-   se réduit jamais, quelle que soit la taille de la fenêtre. Même
-   principe que .session-layout ci-dessous pour le terminal (49px =
-   hauteur de .session-header). */
-#vnc-screen { height: calc(100vh - 49px); }
+   se réduit jamais, quelle que soit la taille de la fenêtre.
+   Colonne flex plutôt que calc(100vh - 49px) : cette constante supposait
+   une hauteur d'en-tête qui ne tenait plus (55px depuis le bouton
+   Presse-papiers), l'écran distant débordait donc du bas de 6px. Ici
+   #vnc-screen prend exactement le reste, quelle que soit la hauteur de
+   l'en-tête. height:0 + flex:1 (et pas seulement min-height:0) pour que
+   le height:100% du wrapper interne de noVNC se résolve de façon fiable. */
+.vnc-page { display: flex; flex-direction: column; height: 100vh; }
+.vnc-page > .session-header { flex: none; }
+.vnc-page > .connect-form { width: 100%; flex: none; }
+#vnc-screen { flex: 1; height: 0; min-height: 0; }
 
 /* --- terminal + colonne de fichiers --- */
 
