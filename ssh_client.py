@@ -97,7 +97,7 @@ def resolve_stored_auth(machine):
     chargée, pour que l'appelant distingue ce cas d'une simple absence
     de clé."""
     stored = machine.get("credentials") or {}
-    username = stored.get("username")
+    username = stored.get("username") or credentials.default_ssh_username()
     password = credentials.decrypt(stored["password"]) if stored.get("password") else None
 
     pkey = None
@@ -109,6 +109,18 @@ def resolve_stored_auth(machine):
         )
         if key_text:
             pkey = load_private_key(key_text, key_passphrase)
+
+    # Aucune clé propre à la machine : clé par défaut du serveur (BASTION_DEFAULT_SSH_KEY_FILE).
+    # Essayée avant le mot de passe mémorisé, qui reste le repli (machine plus ancienne).
+    if pkey is None:
+        default_text = credentials.default_ssh_key_text()
+        if default_text:
+            try:
+                pkey = load_private_key(default_text)
+            except PrivateKeyError as exc:
+                raise PrivateKeyError(
+                    f"clé par défaut du serveur ({credentials.default_ssh_key_file()}) : {exc}"
+                ) from exc
 
     sudo_password = (
         credentials.decrypt(stored["sudo_password"]) if stored.get("sudo_password") else None

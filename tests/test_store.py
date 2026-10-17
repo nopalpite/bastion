@@ -470,3 +470,15 @@ def test_import_machines_yaml_rejects_missing_keys(machines_file):
 def test_import_machines_yaml_rejects_wrong_types(machines_file):
     with pytest.raises(store.InventoryImportError, match="listes"):
         store.import_machines_yaml("rooms: {}\nmachines: {}\n")
+
+
+def test_default_ssh_credentials_count_as_stored(tmp_path, monkeypatch):
+    machine = {"credentials": {}}
+    assert store.has_stored_credentials(machine) is False
+    key = tmp_path / "k"
+    key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nx\n-----END OPENSSH PRIVATE KEY-----\n")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(key))
+    assert store.has_stored_credentials(machine) is False      # clé sans compte : insuffisant
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_USER", "pi")
+    assert store.has_stored_credentials(machine) is True
+    assert store.has_stored_credentials({}) is True

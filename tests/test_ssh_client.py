@@ -259,3 +259,58 @@ def test_resolve_stored_auth_raises_on_invalid_stored_key(credentials_key):
 
 def test_resolve_stored_auth_with_no_stored_credentials():
     assert ssh_client.resolve_stored_auth({}) == (None, None, None, None)
+
+
+# --- clé SSH par défaut du serveur (BASTION_DEFAULT_SSH_KEY_FILE) --------------------------
+
+def _write_default_key(tmp_path, monkeypatch, user="pi"):
+    pem = _ed25519_pem()
+    path = tmp_path / "default_key"
+    path.write_text(pem)
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    if user:
+        monkeypatch.setenv("BASTION_DEFAULT_SSH_USER", user)
+    return ssh_client.load_private_key(pem)
+
+
+def test_resolve_stored_auth_falls_back_to_the_default_key_and_user(tmp_path, monkeypatch):
+    key = _write_default_key(tmp_path, monkeypatch)
+    username, password, pkey, sudo_password = ssh_client.resolve_stored_auth({})
+    assert username == "pi" and password is None and sudo_password is None
+    assert pkey.get_fingerprint() == key.get_fingerprint()
+
+
+def test_machine_own_key_and_user_win_over_the_default(tmp_path, monkeypatch, credentials_key):
+    _write_default_key(tmp_path, monkeypatch)
+    own_pem = _ed25519_pem()
+    own = ssh_client.load_private_key(own_pem)
+    machine = {"credentials": {"username": "alice", "private_key": credentials.encrypt(own_pem)}}
+    username, _p, pkey, _s = ssh_client.resolve_stored_auth(machine)
+    assert username == "alice" and pkey.get_fingerprint() == own.get_fingerprint()
+
+
+def test_default_key_is_tried_before_a_stored_password(tmp_path, monkeypatch, credentials_key):
+    key = _write_default_key(tmp_path, monkeypatch)
+    machine = {"credentials": {"username": "bob", "password": credentials.encrypt("secret")}}
+    username, password, pkey, _s = ssh_client.resolve_stored_auth(machine)
+    assert (username, password) == ("bob", "secret")
+    assert pkey.get_fingerprint() == key.get_fingerprint()
+
+
+def test_no_default_key_configured_changes_nothing(monkeypatch):
+    monkeypatch.delenv("BASTION_DEFAULT_SSH_KEY_FILE", raising=False)
+    monkeypatch.delenv("BASTION_DEFAULT_SSH_USER", raising=False)
+    assert ssh_client.resolve_stored_auth({}) == (None, None, None, None)
+
+
+def test_missing_default_key_file_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(tmp_path / "absent"))
+    assert ssh_client.resolve_stored_auth({})[2] is None
+
+
+def test_broken_default_key_is_reported_with_its_path(tmp_path, monkeypatch):
+    path = tmp_path / "default_key"
+    path.write_text("pas une clé")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    with pytest.raises(ssh_client.PrivateKeyError, match="clé par défaut du serveur"):
+        ssh_client.resolve_stored_auth({})

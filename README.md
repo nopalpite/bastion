@@ -587,6 +587,8 @@ Variables d'environnement utiles :
 | `BASTION_VNC_WS_PORT` | port où joindre le proxy VNC (l'hôte est déterminé automatiquement par le navigateur) | `6080` |
 | `BASTION_VNC_WS_PATH` | si définie (ex: `/vnc-ws/`), route le VNC via ce chemin sur le même host:port que la page plutôt que le port direct — utile derrière un reverse proxy TLS | (vide, mode direct) |
 | `BASTION_CREDENTIALS_KEY` | clé de chiffrement des identifiants SSH mémorisés. Sans elle, la mémorisation est désactivée. Générer avec `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | (aucune) |
+| `BASTION_DEFAULT_SSH_KEY_FILE` | chemin d'une clé SSH privée (sans passphrase) montée sur le serveur, utilisée **par défaut** pour toute machine qui n'a pas sa propre clé, essayée avant un mot de passe mémorisé. Jamais copiée dans `machines.yaml` ni envoyée au navigateur. Pour un parc dont toutes les machines acceptent la même clé publique | (aucune) |
+| `BASTION_DEFAULT_SSH_USER` | compte SSH utilisé par défaut quand une machine n'en mémorise pas (avec la clé par défaut, les machines s'ouvrent sans rien saisir) | (aucun) |
 | `BASTION_DATA_DIR` | dossier contenant `machines.yaml`. L'image Docker la définit à `/app/config` (voir la section Docker) ; sans intérêt à changer hors Docker | dossier de l'appli |
 | `BASTION_TLS_SELFSIGNED` | si `true`, sert HTTPS/WSS directement (app + VNC) avec un certificat auto-signé généré et géré par Bastion — voir la section "TLS sans reverse proxy" | (vide, HTTP) |
 | `BASTION_TLS_CERT` / `BASTION_TLS_KEY` | chemins vers un certificat déjà existant, prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux sont définis | (aucun) |

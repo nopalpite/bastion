@@ -155,8 +155,12 @@ def machines_without_room():
 
 
 def has_stored_credentials(machine):
+    """Des identifiants SSH sont utilisables sans rien saisir : ceux mémorisés pour la machine,
+    ou le compte et la clé par défaut du serveur (credentials.default_ssh_*)."""
     creds = machine.get("credentials") or {}
-    return bool(creds.get("username") and (creds.get("password") or creds.get("private_key")))
+    username = creds.get("username") or credentials.default_ssh_username()
+    return bool(username and (creds.get("password") or creds.get("private_key")
+                              or credentials.default_ssh_key_text()))
 
 
 def _build_credentials(username, password=None, private_key=None,
