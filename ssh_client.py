@@ -52,7 +52,8 @@ class PrivateKeyError(Exception):
     passer une clé cassée inaperçue comme "pas de clé configurée"."""
 
 
-def load_private_key(key_text, passphrase=None):
+def load_private_key(key_text, passphrase=None,
+                     passphrase_help="renseignez-la dans le formulaire de l'hôte"):
     """Charge une clé privée PEM ou OpenSSH, quel que soit son type
     (RSA/Ed25519/ECDSA/DSA). Paramiko n'offre aucun chargeur générique
     (PKey.from_private_key exige déjà de connaître la classe concrète —
@@ -73,8 +74,7 @@ def load_private_key(key_text, passphrase=None):
             return key_cls.from_private_key(io.StringIO(key_text), password=passphrase)
         except paramiko.PasswordRequiredException as exc:
             raise PrivateKeyError(
-                "Cette clé privée est protégée par une passphrase — "
-                "renseignez-la dans le formulaire de l'hôte."
+                f"Cette clé privée est protégée par une passphrase — {passphrase_help}."
             ) from exc
         except paramiko.SSHException as exc:
             last_exc = exc
@@ -115,12 +115,18 @@ def resolve_stored_auth(machine):
     if pkey is None:
         default_text = credentials.default_ssh_key_text()
         if default_text:
+            path = credentials.default_ssh_key_file()
             try:
-                pkey = load_private_key(default_text)
+                pkey = load_private_key(
+                    default_text,
+                    passphrase_help="la clé par défaut du serveur doit être sans passphrase",
+                )
             except PrivateKeyError as exc:
-                raise PrivateKeyError(
-                    f"clé par défaut du serveur ({credentials.default_ssh_key_file()}) : {exc}"
-                ) from exc
+                if not password:
+                    raise PrivateKeyError(f"clé par défaut du serveur ({path}) : {exc}") from exc
+                # La machine a son propre mot de passe : un réglage serveur cassé ne doit pas
+                # l'empêcher de fonctionner. Signalé une fois dans les journaux.
+                credentials.warn_default_key_once(path, str(exc))
 
     sudo_password = (
         credentials.decrypt(stored["sudo_password"]) if stored.get("sudo_password") else None

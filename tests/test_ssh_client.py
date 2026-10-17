@@ -314,3 +314,42 @@ def test_broken_default_key_is_reported_with_its_path(tmp_path, monkeypatch):
     monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
     with pytest.raises(ssh_client.PrivateKeyError, match="clé par défaut du serveur"):
         ssh_client.resolve_stored_auth({})
+
+
+def test_broken_default_key_does_not_break_a_machine_with_its_own_password(
+        tmp_path, monkeypatch, credentials_key, capsys):
+    path = tmp_path / "default_key"
+    path.write_text("pas une clé")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    machine = {"credentials": {"username": "bob", "password": credentials.encrypt("secret")}}
+    assert ssh_client.resolve_stored_auth(machine) == ("bob", "secret", None, None)
+    ssh_client.resolve_stored_auth(machine)
+    out = capsys.readouterr().out
+    assert out.count("Clé SSH par défaut") == 1 and str(path) in out   # signalée une seule fois
+
+
+def test_default_key_with_a_passphrase_gets_an_accurate_message(tmp_path, monkeypatch):
+    path = tmp_path / "default_key"
+    path.write_text(_ed25519_pem("secret-passphrase"))
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    with pytest.raises(ssh_client.PrivateKeyError) as err:
+        ssh_client.resolve_stored_auth({})
+    assert "sans passphrase" in str(err.value) and "formulaire" not in str(err.value)
+
+
+def test_unreadable_default_key_file_is_logged_once(tmp_path, monkeypatch, capsys):
+    missing = tmp_path / "absent"
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(missing))
+    assert credentials.default_ssh_key_text() is None
+    assert credentials.default_ssh_key_text() is None
+    out = capsys.readouterr().out
+    assert out.count("ignorée") == 1 and "illisible" in out
+
+
+def test_default_key_is_reread_only_when_the_file_changes(tmp_path, monkeypatch):
+    path = tmp_path / "default_key"
+    path.write_text("premier")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    assert credentials.default_ssh_key_text() == "premier"
+    path.write_text("deuxième contenu")
+    assert credentials.default_ssh_key_text() == "deuxième contenu"

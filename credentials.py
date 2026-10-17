@@ -65,17 +65,39 @@ def default_ssh_key_file():
     return os.environ.get("BASTION_DEFAULT_SSH_KEY_FILE") or None
 
 
+# Le fichier est relu seulement s'il a changé (has_stored_credentials est appelé une fois par
+# machine sur certaines pages) ; un fichier absent, illisible ou vide est signalé UNE fois.
+_default_key_cache = {}
+_default_key_warned = set()
+
+
+def warn_default_key_once(path, reason):
+    if (path, reason) not in _default_key_warned:
+        _default_key_warned.add((path, reason))
+        print(f"[credentials] Clé SSH par défaut {path} ignorée : {reason}")
+
+
 def default_ssh_key_text():
-    """Contenu de la clé privée par défaut, relu à chaque appel (le fichier peut être
-    remplacé sans redémarrer). None si non configurée ou illisible."""
+    """Contenu de la clé privée par défaut (relu quand le fichier change, sans redémarrer).
+    None si non configurée, absente, illisible ou vide -- ces trois derniers cas sont
+    signalés dans les journaux."""
     path = default_ssh_key_file()
     if not path:
         return None
     try:
+        stat = os.stat(path)
+        cached = _default_key_cache.get(path)
+        if cached and cached[:2] == (stat.st_mtime_ns, stat.st_size):
+            return cached[2]
         text = Path(path).read_text()
-    except OSError:
+    except OSError as exc:
+        warn_default_key_once(path, f"fichier illisible ({exc.strerror or exc})")
         return None
-    return text if text.strip() else None
+    if not text.strip():
+        warn_default_key_once(path, "fichier vide")
+        text = None
+    _default_key_cache[path] = (stat.st_mtime_ns, stat.st_size, text)
+    return text
 
 
 def default_ssh_username():

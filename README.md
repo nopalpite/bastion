@@ -596,6 +596,28 @@ Variables d'environnement utiles :
 | `BASTION_NOTIFY_WEBHOOK_URL` | webhook (Slack/Discord/Mattermost...) notifié quand une machine change d'état (up/down) — voir la section "Notifications" | (vide, désactivé) |
 | `BASTION_API_TOKEN` | jeton d'authentification pour `GET /api/machines` (inventaire en lecture seule) — voir la section dédiée | (vide, route inexistante) |
 
+### Clé SSH par défaut
+
+Pour un parc dont toutes les machines acceptent la même paire de clés (ex. une image unique
+flashée partout), `BASTION_DEFAULT_SSH_KEY_FILE` désigne une clé privée **sans passphrase**
+montée sur le serveur, et `BASTION_DEFAULT_SSH_USER` le compte à utiliser. Tout ce qui ouvre
+une session SSH (terminal, fichiers, macros, reboot/shutdown) les utilise pour les machines qui
+n'ont pas leurs propres identifiants :
+
+- les identifiants propres à une machine restent **prioritaires** ; la clé par défaut est
+  essayée avant un mot de passe mémorisé, qui reste le repli ;
+- une machine sans aucun identifiant devient donc « authentifiée » (le formulaire de connexion
+  est sauté, les macros s'y exécutent) -- à assumer en posant ce réglage. `sudo` reste soumis à
+  son propre mot de passe (champ « mot de passe sudo »), sauf `NOPASSWD` côté machine ;
+- une clé par défaut **absente, illisible, vide ou protégée par passphrase** est signalée dans
+  les journaux et n'empêche pas les machines qui ont leur mot de passe de fonctionner ; pour les
+  autres, l'erreur nomme le fichier.
+
+La clé n'est jamais copiée dans `machines.yaml` ni envoyée au navigateur, mais elle n'est **pas
+chiffrée au repos** (contrairement aux identifiants mémorisés) : la monter en lecture seule,
+avec des droits stricts (`0600`). Elle est proposée à toute machine contactée, comme n'importe
+quelle clé SSH.
+
 ## Lancement
 
 ```bash

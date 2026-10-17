@@ -43,6 +43,11 @@ services:
       # ex: source pour un inventaire dynamique Ansible) — voir la section
       # "API d'inventaire" du README. Vide par défaut (route inexistante).
       - BASTION_API_TOKEN=
+      # Optionnel: clé SSH PRIVÉE par défaut (sans passphrase) pour les machines qui n'ont pas la
+      # leur, et compte associé -- voir la section "Clé SSH par défaut" du README. Décommenter avec
+      # le montage correspondant plus bas (lecture seule, droits 0600).
+      # - BASTION_DEFAULT_SSH_KEY_FILE=/run/keys/default_ed25519
+      # - BASTION_DEFAULT_SSH_USER=pi
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement: voir BASTION_DATA_DIR
@@ -55,3 +60,5 @@ services:
       - ./config:/app/config
       # Persister les plans de salle uploadés (sinon perdus au rebuild)
       - ./data/maps:/app/static/uploads/maps
+      # Clé SSH par défaut (voir BASTION_DEFAULT_SSH_KEY_FILE plus haut) :
+      # - ./keys/default_ed25519:/run/keys/default_ed25519:ro
