@@ -168,6 +168,41 @@ def test_run_action_windows_does_not_require_sudo_password(monkeypatch, _get_mac
     assert client.last_command == "shutdown /r /t 0"
 
 
+def test_run_action_windows_uses_the_server_default_key_and_user(
+    monkeypatch, _get_machine, default_ssh_key,
+):
+    """Windows n'a pas de sudo : la clé et le compte par défaut du serveur suffisent pour
+    redémarrer une machine qui n'a aucun identifiant propre."""
+    _get_machine["m8"] = {"id": "m8", "name": "Windows", "os": "windows", "host": "10.0.0.8"}
+    connect_calls = []
+    client = FakeSSHClient(exit_status=0)
+    monkeypatch.setattr(
+        ssh_actions.ssh_client, "connect",
+        lambda machine, user, pwd, pkey=None: connect_calls.append((user, pwd, pkey)) or client,
+    )
+
+    ssh_actions.run_action("m8", "reboot")
+
+    [(user, pwd, pkey)] = connect_calls
+    assert user == "pi" and pwd is None
+    assert pkey.get_fingerprint() == default_ssh_key
+
+
+def test_run_action_linux_with_only_the_default_key_needs_a_sudo_password(
+    monkeypatch, _get_machine, default_ssh_key,
+):
+    _get_machine["m9"] = {"id": "m9", "name": "Linux", "os": "linux", "host": "10.0.0.9"}
+    connect_calls = []
+    monkeypatch.setattr(
+        ssh_actions.ssh_client, "connect",
+        lambda *a, **k: connect_calls.append(1) or FakeSSHClient(),
+    )
+
+    with pytest.raises(ssh_actions.MissingCredentialsError, match="mot de passe sudo"):
+        ssh_actions.run_action("m9", "reboot")
+    assert connect_calls == []
+
+
 def test_run_action_reports_invalid_stored_key(_get_machine, monkeypatch):
     machine = {
         "id": "m6", "name": "Clé cassée", "os": "linux", "host": "10.0.0.6",

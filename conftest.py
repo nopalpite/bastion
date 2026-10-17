@@ -67,3 +67,25 @@ def credentials_key(monkeypatch):
     key = Fernet.generate_key().decode()
     monkeypatch.setenv("BASTION_CREDENTIALS_KEY", key)
     return key
+
+
+@pytest.fixture
+def default_ssh_key(tmp_path, monkeypatch):
+    """Configure la clé SSH par défaut du serveur (BASTION_DEFAULT_SSH_KEY_FILE /
+    BASTION_DEFAULT_SSH_USER, voir credentials.py) avec une vraie clé Ed25519 jetable ;
+    retourne son empreinte pour vérifier que c'est bien elle qui est utilisée."""
+    import paramiko
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
+    pem = ed25519.Ed25519PrivateKey.generate().private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.OpenSSH,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+    path = tmp_path / "default_key"
+    path.write_text(pem)
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_USER", "pi")
+    import io
+    return paramiko.Ed25519Key.from_private_key(io.StringIO(pem)).get_fingerprint()

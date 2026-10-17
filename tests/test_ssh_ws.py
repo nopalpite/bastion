@@ -147,6 +147,42 @@ def test_ssh_connect_falls_back_to_stored_key_when_no_password_typed(
     assert "sid-1" in ssh_ws.sessions
 
 
+def test_ssh_connect_uses_the_server_default_key_for_a_machine_without_credentials(
+    wired_socketio, monkeypatch, default_ssh_key, history_db,
+):
+    """Terminal sans rien saisir (formulaire sauté, has_stored_creds) sur une machine qui
+    n'a aucun identifiant propre : compte et clé par défaut du serveur."""
+    connect_calls = []
+    monkeypatch.setattr(
+        ssh_ws.ssh_client, "connect",
+        lambda machine, u, p, pkey=None: connect_calls.append((u, p, pkey)) or FakeSSHClient(),
+    )
+
+    wired_socketio.handlers["ssh_connect"]({"machine_id": "m1"})
+
+    [(user, password, pkey)] = connect_calls
+    assert user == "pi" and password is None
+    assert pkey.get_fingerprint() == default_ssh_key
+    assert "sid-1" in ssh_ws.sessions
+
+
+def test_ssh_connect_typed_password_ignores_the_server_default_key(
+    wired_socketio, monkeypatch, default_ssh_key, history_db,
+):
+    """Un mot de passe saisi à la main reste ad hoc : jamais combiné à la clé par défaut."""
+    connect_calls = []
+    monkeypatch.setattr(
+        ssh_ws.ssh_client, "connect",
+        lambda machine, u, p, pkey=None: connect_calls.append((u, p, pkey)) or FakeSSHClient(),
+    )
+
+    wired_socketio.handlers["ssh_connect"](
+        {"machine_id": "m1", "username": "root", "password": "hunter2"},
+    )
+
+    assert connect_calls == [("root", "hunter2", None)]
+
+
 def test_ssh_connect_reports_invalid_stored_key(wired_socketio, monkeypatch):
     """handle_ssh_connect utilise emit() (envoi au seul client courant), pas
     socketio.emit(room=...) comme le reste du module — donc monkeypatché

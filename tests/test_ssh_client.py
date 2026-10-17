@@ -346,10 +346,40 @@ def test_unreadable_default_key_file_is_logged_once(tmp_path, monkeypatch, capsy
     assert out.count("ignorée") == 1 and "illisible" in out
 
 
-def test_default_key_is_reread_only_when_the_file_changes(tmp_path, monkeypatch):
+def _count_key_file_reads(monkeypatch):
+    """Compte les vraies lectures du fichier de clé (Path.read_text), pour prouver le cache
+    plutôt que de seulement observer le contenu retourné."""
+    reads = []
+    real_read_text = credentials.Path.read_text
+
+    def counting_read_text(self, *args, **kwargs):
+        reads.append(str(self))
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(credentials.Path, "read_text", counting_read_text)
+    return reads
+
+
+def test_default_key_is_not_reread_while_the_file_is_unchanged(tmp_path, monkeypatch):
+    path = tmp_path / "default_key"
+    path.write_text("contenu")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    reads = _count_key_file_reads(monkeypatch)
+
+    for _ in range(5):
+        assert credentials.default_ssh_key_text() == "contenu"
+
+    assert len(reads) == 1
+
+
+def test_default_key_change_is_picked_up_without_restart(tmp_path, monkeypatch):
     path = tmp_path / "default_key"
     path.write_text("premier")
     monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    reads = _count_key_file_reads(monkeypatch)
+
     assert credentials.default_ssh_key_text() == "premier"
-    path.write_text("deuxième contenu")
+    path.write_text("deuxième contenu")  # taille différente : change même à mtime identique
     assert credentials.default_ssh_key_text() == "deuxième contenu"
+
+    assert len(reads) == 2

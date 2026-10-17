@@ -281,6 +281,43 @@ def test_run_on_machine_uses_dedicated_sudo_password_over_ssh_password(monkeypat
     assert client.stdin.written == "sudopass\n"
 
 
+def test_run_on_machine_uses_the_server_default_key_for_a_machine_without_credentials(
+    monkeypatch, default_ssh_key,
+):
+    connect_calls = []
+
+    def fake_connect(machine, username, password, pkey=None, timeout=None):
+        connect_calls.append((username, password, pkey))
+        return FakeSSHClient()
+
+    monkeypatch.setattr(macro_runner.ssh_client, "connect", fake_connect)
+
+    result = macro_runner._run_on_machine(_machine_without_creds(), "uptime", timeout=5)
+
+    assert result["ok"] is True
+    [(username, password, pkey)] = connect_calls
+    assert username == "pi" and password is None
+    assert pkey.get_fingerprint() == default_ssh_key
+
+
+def test_run_on_machine_sudo_still_needs_a_password_with_the_default_key(
+    monkeypatch, default_ssh_key,
+):
+    """La clé par défaut authentifie en SSH mais ne fournit aucun mot de passe pour sudo -S :
+    échec explicite avant même de se connecter (voir le README, "Clé SSH par défaut")."""
+    connect_calls = []
+    monkeypatch.setattr(
+        macro_runner.ssh_client, "connect",
+        lambda *a, **k: connect_calls.append(1) or FakeSSHClient(),
+    )
+
+    result = macro_runner._run_on_machine(_machine_without_creds(), "sudo apt update", timeout=5)
+
+    assert result["ok"] is False
+    assert "mot de passe sudo" in result["output"].lower()
+    assert connect_calls == []
+
+
 def test_run_on_machine_reports_invalid_stored_key(monkeypatch):
     machine = {
         "id": "m5", "name": "Clé cassée", "host": "10.0.0.5",

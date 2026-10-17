@@ -609,9 +609,13 @@ n'ont pas leurs propres identifiants :
 - une machine sans aucun identifiant devient donc « authentifiée » (le formulaire de connexion
   est sauté, les macros s'y exécutent) -- à assumer en posant ce réglage. `sudo` reste soumis à
   son propre mot de passe (champ « mot de passe sudo »), sauf `NOPASSWD` côté machine ;
-- une clé par défaut **absente, illisible, vide ou protégée par passphrase** est signalée dans
-  les journaux et n'empêche pas les machines qui ont leur mot de passe de fonctionner ; pour les
-  autres, l'erreur nomme le fichier.
+- une clé par défaut défectueuse est signalée **une seule fois dans les journaux** et
+  n'empêche pas les machines qui ont leur mot de passe de fonctionner. Pour une machine sans
+  identifiants propres, le comportement dépend du défaut :
+  - fichier **absent, illisible ou vide** : la clé est simplement ignorée, la machine redemande
+    ses identifiants comme sans ce réglage -- seul le journal nomme le fichier ;
+  - contenu **invalide ou protégé par passphrase** : la connexion échoue avec une erreur qui
+    nomme le fichier (la clé par défaut doit être sans passphrase).
 
 La clé n'est jamais copiée dans `machines.yaml` ni envoyée au navigateur, mais elle n'est **pas
 chiffrée au repos** (contrairement aux identifiants mémorisés) : la monter en lecture seule,
