@@ -82,6 +82,28 @@ def load_private_key(key_text, passphrase=None,
     raise PrivateKeyError(f"Format de clé privée non reconnu : {last_exc}")
 
 
+def default_key_status():
+    """État de la clé SSH par défaut du serveur (voir credentials.default_ssh_key_*), pour
+    l'indiquer sur le formulaire d'hôte : "absent" (rien de configuré -> rien à signaler),
+    "ok", ou "inutilisable" (configurée mais fichier illisible/vide, contenu invalide ou
+    protégé par passphrase -- la cause exacte est dans les journaux, jamais affichée au
+    navigateur). Ici plutôt que dans credentials.py : juger une clé "invalide" demande de la
+    parser (load_private_key), et ce module importe déjà credentials -- l'inverse serait
+    circulaire."""
+    path = credentials.default_ssh_key_file()
+    if not path:
+        return "absent"
+    text = credentials.default_ssh_key_text()  # journalise un fichier illisible/vide, une fois
+    if not text:
+        return "inutilisable"
+    try:
+        load_private_key(text)
+    except PrivateKeyError as exc:
+        credentials.warn_default_key_once(path, str(exc))
+        return "inutilisable"
+    return "ok"
+
+
 def resolve_stored_auth(machine):
     """Déchiffre les identifiants SSH mémorisés pour `machine` (voir
     store.py/credentials.py) et prépare tout ce dont connect() a besoin.

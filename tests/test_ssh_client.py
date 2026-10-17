@@ -383,3 +383,42 @@ def test_default_key_change_is_picked_up_without_restart(tmp_path, monkeypatch):
     assert credentials.default_ssh_key_text() == "deuxième contenu"
 
     assert len(reads) == 2
+
+
+# --- default_key_status : affiché sur le formulaire d'hôte (jamais le chemin) --------------
+
+def test_default_key_status_absent_when_not_configured(monkeypatch):
+    monkeypatch.delenv("BASTION_DEFAULT_SSH_KEY_FILE", raising=False)
+    assert ssh_client.default_key_status() == "absent"
+
+
+def test_default_key_status_ok_for_a_valid_key(default_ssh_key):
+    assert ssh_client.default_key_status() == "ok"
+
+
+def test_default_key_status_unusable_for_a_missing_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(tmp_path / "absent"))
+    assert ssh_client.default_key_status() == "inutilisable"
+
+
+def test_default_key_status_unusable_for_an_empty_file(tmp_path, monkeypatch):
+    path = tmp_path / "default_key"
+    path.write_text("   \n")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    assert ssh_client.default_key_status() == "inutilisable"
+
+
+def test_default_key_status_unusable_for_garbage_and_logs_it_once(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "default_key"
+    path.write_text("pas une clé")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    assert ssh_client.default_key_status() == "inutilisable"
+    assert ssh_client.default_key_status() == "inutilisable"
+    assert capsys.readouterr().out.count("Clé SSH par défaut") == 1
+
+
+def test_default_key_status_unusable_for_a_passphrase_protected_key(tmp_path, monkeypatch):
+    path = tmp_path / "default_key"
+    path.write_text(_ed25519_pem("secret-passphrase"))
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(path))
+    assert ssh_client.default_key_status() == "inutilisable"

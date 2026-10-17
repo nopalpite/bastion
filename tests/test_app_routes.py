@@ -6,6 +6,7 @@ avant tout le reste, voir son commentaire) pour tout le process pytest.
 Sans effet sur ces tests, mais à garder en tête si des tests ajoutés plus
 tard se comportent bizarrement avec le threading/les sockets standard."""
 import io
+import os
 import time
 
 import pytest
@@ -75,6 +76,111 @@ def test_new_host_get_prefills_from_query_params(client):
     assert 'value="10.0.0.9"' in body
     assert 'value="srv-discovered"' in body
     assert 'value="5901"' in body
+
+
+# --- Note "clé SSH par défaut" sur le formulaire d'hôte (voir
+# ssh_client.default_key_status) : l'état et le compte seulement, jamais
+# le chemin du fichier ni son contenu. -----------------------------------
+
+DEFAULT_KEY_NOTE = "clé SSH par défaut du serveur est active"
+DEFAULT_KEY_WARNING = "inutilisable"
+
+
+def test_new_host_form_shows_the_default_key_note_without_leaking_the_path(
+    client, default_ssh_key,
+):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    key_path = os.environ["BASTION_DEFAULT_SSH_KEY_FILE"]
+
+    body = client.get("/hosts/new").get_data(as_text=True)
+
+    assert DEFAULT_KEY_NOTE in body
+    assert "<code>pi</code>" in body
+    assert DEFAULT_KEY_WARNING not in body
+    assert key_path not in body and os.path.basename(key_path) not in body
+
+
+def test_new_host_form_has_no_note_when_no_default_key_is_configured(client, monkeypatch):
+    monkeypatch.delenv("BASTION_DEFAULT_SSH_KEY_FILE", raising=False)
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    body = client.get("/hosts/new").get_data(as_text=True)
+
+    assert DEFAULT_KEY_NOTE not in body
+    assert DEFAULT_KEY_WARNING not in body
+
+
+def test_new_host_form_says_when_there_is_no_default_account(
+    client, default_ssh_key, monkeypatch,
+):
+    monkeypatch.delenv("BASTION_DEFAULT_SSH_USER")
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    body = client.get("/hosts/new").get_data(as_text=True)
+
+    assert DEFAULT_KEY_NOTE in body
+    assert "aucun compte par défaut" in body
+    assert "BASTION_DEFAULT_SSH_USER" in body
+    # Renseigner seulement « Utilisateur SSH » ne mémorise rien (un compte n'est enregistré
+    # qu'avec un mot de passe ou une clé) : on ne le conseille donc pas.
+    assert "renseignez" not in body
+    assert "Laissez ces champs vides" not in body  # sans compte, ce serait faux
+
+
+def test_new_host_form_warns_when_the_default_key_file_is_broken(
+    client, tmp_path, monkeypatch,
+):
+    broken = tmp_path / "default_key"
+    broken.write_text("pas une clé")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_KEY_FILE", str(broken))
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    body = client.get("/hosts/new").get_data(as_text=True)
+
+    assert DEFAULT_KEY_WARNING in body and "voir les journaux" in body
+    assert DEFAULT_KEY_NOTE not in body
+    assert str(broken) not in body and "pas une clé" not in body
+
+
+def test_edit_host_form_shows_the_default_key_note_too(client, default_ssh_key):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    body = client.get("/hosts/serveur-test/edit").get_data(as_text=True)
+
+    assert DEFAULT_KEY_NOTE in body and "<code>pi</code>" in body
+
+
+def test_host_without_credentials_opens_its_terminal_without_a_form_with_the_default_key(
+    client, default_ssh_key,
+):
+    """Critère d'acceptation : créer un hôte sans identifiants, puis ouvrir son terminal --
+    le formulaire de connexion est sauté (has_stored_creds)."""
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    body = client.get("/terminal/serveur-test").get_data(as_text=True)
+
+    assert "const hasStoredCreds = true;" in body
+
+
+def test_host_without_credentials_still_asks_for_them_without_a_default_key(
+    client, monkeypatch,
+):
+    monkeypatch.delenv("BASTION_DEFAULT_SSH_KEY_FILE", raising=False)
+    monkeypatch.delenv("BASTION_DEFAULT_SSH_USER", raising=False)
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    body = client.get("/terminal/serveur-test").get_data(as_text=True)
+
+    assert "const hasStoredCreds = false;" in body
 
 
 def test_new_host_rejects_missing_required_fields(client):

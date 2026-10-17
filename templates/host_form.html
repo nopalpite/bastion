@@ -84,6 +84,21 @@
   </p>
   {% endif %}
 
+  {% if default_ssh and default_ssh.status == "ok" %}
+  <p class="hint-box">
+    {% if default_ssh.user %}
+    Une clé SSH par défaut du serveur est active (compte <code>{{ default_ssh.user }}</code>).
+    Laissez ces champs vides pour l'utiliser ; ce que vous saisissez ici prime pour cette machine.
+    {% else %}
+    Une clé SSH par défaut du serveur est active, mais aucun compte par défaut n'est défini :
+    définissez <code>BASTION_DEFAULT_SSH_USER</code> pour utiliser cette clé sans rien saisir.
+    Ce que vous saisissez ici prime pour cette machine.
+    {% endif %}
+  </p>
+  {% elif default_ssh and default_ssh.status == "inutilisable" %}
+  <div class="error-msg">Clé SSH par défaut configurée mais inutilisable (voir les journaux).</div>
+  {% endif %}
+
   <div class="form-grid">
     <div class="field">
       <label for="username">Utilisateur SSH</label>

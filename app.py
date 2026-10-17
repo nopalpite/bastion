@@ -28,6 +28,7 @@ import discovery
 import history
 import macro_runner
 import macro_store
+import ssh_client
 import tls
 from map_image import DEFAULT_MAP_RATIO, get_image_size, validate_map_image
 from monitor import start_background_monitor, get_status_snapshot
@@ -391,6 +392,16 @@ def import_hosts():
 
 # --- Gestion de l'inventaire: ajout d'hôte / salle ---------------------
 
+def _default_ssh_context():
+    """État de la clé SSH par défaut du serveur pour host_form.html (note ou avertissement
+    au-dessus des champs d'identifiants). Uniquement l'état et le nom du compte : jamais le
+    chemin du fichier ni son contenu -- voir ssh_client.default_key_status."""
+    return {
+        "status": ssh_client.default_key_status(),
+        "user": credentials.default_ssh_username(),
+    }
+
+
 @app.route("/hosts/new", methods=["GET", "POST"])
 @login_required
 def new_host():
@@ -420,6 +431,7 @@ def new_host():
                 error="Nom, hôte et OS sont obligatoires.",
                 credentials_enabled=credentials.credentials_enabled(),
                 tag_catalog=store.load_tag_catalog(),
+                default_ssh=_default_ssh_context(),
             )
 
         store.add_machine(
@@ -451,6 +463,7 @@ def new_host():
         "host_form.html", rooms=rooms, error=None, prefill=prefill,
         credentials_enabled=credentials.credentials_enabled(),
         tag_catalog=store.load_tag_catalog(),
+        default_ssh=_default_ssh_context(),
     )
 
 
@@ -519,6 +532,7 @@ def edit_host(machine_id):
                 error="Nom, hôte et OS sont obligatoires.",
                 credentials_enabled=credentials.credentials_enabled(),
                 tag_catalog=store.load_tag_catalog(),
+                default_ssh=_default_ssh_context(),
             )
 
         store.update_machine(
@@ -542,6 +556,7 @@ def edit_host(machine_id):
         "host_form.html", rooms=rooms, machine=machine, error=None,
         credentials_enabled=credentials.credentials_enabled(),
         tag_catalog=store.load_tag_catalog(),
+        default_ssh=_default_ssh_context(),
     )
 
 
