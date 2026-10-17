@@ -188,15 +188,14 @@ def vnc(machine_id):
     # donc les déchiffrer et les transmettre à la page pour que le client
     # JS puisse les utiliser directement, plutôt que de forcer une
     # saisie manuelle à chaque fois.
-    stored_vnc_password = machine.get("vnc_password")
-    vnc_password = credentials.decrypt(stored_vnc_password) if stored_vnc_password else None
+    vnc_username, vnc_password = credentials.vnc_login(machine)
 
     return render_template(
         "vnc.html",
         machine=machine,
         vnc_ws_port=config.VNC_WS_PORT,
         vnc_ws_path=config.VNC_WS_PATH,
-        vnc_username=machine.get("vnc_username") or "",
+        vnc_username=vnc_username or "",
         vnc_password=vnc_password or "",
         # Voir le commentaire équivalent dans terminal() ci-dessus.
         embedded=request.args.get("embedded") == "1",

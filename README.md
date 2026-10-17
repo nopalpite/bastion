@@ -589,6 +589,7 @@ Variables d'environnement utiles :
 | `BASTION_CREDENTIALS_KEY` | clé de chiffrement des identifiants SSH mémorisés. Sans elle, la mémorisation est désactivée. Générer avec `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | (aucune) |
 | `BASTION_DEFAULT_SSH_KEY_FILE` | chemin d'une clé SSH privée (sans passphrase) montée sur le serveur, utilisée **par défaut** pour toute machine qui n'a pas sa propre clé, essayée avant un mot de passe mémorisé. Jamais copiée dans `machines.yaml` ni envoyée au navigateur. Pour un parc dont toutes les machines acceptent la même clé publique | (aucune) |
 | `BASTION_DEFAULT_SSH_USER` | compte SSH utilisé par défaut quand une machine n'en mémorise pas (avec la clé par défaut, les machines s'ouvrent sans rien saisir) | (aucun) |
+| `BASTION_DEFAULT_VNC_PASSWORD` | mot de passe VNC utilisé par défaut pour toute machine qui n'a pas le sien (le compte reprend le compte SSH). Voir « Identifiants VNC par défaut » | (aucun) |
 | `BASTION_DATA_DIR` | dossier contenant `machines.yaml`. L'image Docker la définit à `/app/config` (voir la section Docker) ; sans intérêt à changer hors Docker | dossier de l'appli |
 | `BASTION_TLS_SELFSIGNED` | si `true`, sert HTTPS/WSS directement (app + VNC) avec un certificat auto-signé généré et géré par Bastion — voir la section "TLS sans reverse proxy" | (vide, HTTP) |
 | `BASTION_TLS_CERT` / `BASTION_TLS_KEY` | chemins vers un certificat déjà existant, prioritaire sur `BASTION_TLS_SELFSIGNED` si les deux sont définis | (aucun) |
@@ -621,6 +622,23 @@ La clé n'est jamais copiée dans `machines.yaml` ni envoyée au navigateur, mai
 chiffrée au repos** (contrairement aux identifiants mémorisés) : la monter en lecture seule,
 avec des droits stricts (`0600`). Elle est proposée à toute machine contactée, comme n'importe
 quelle clé SSH.
+
+### Identifiants VNC par défaut
+
+Pour un parc où le compte système sert aussi à l'authentification VNC (ex. RealVNC Server),
+une machine sans identifiants VNC propres n'a rien à saisir. Dans l'ordre, du plus spécifique
+au plus général :
+
+- **mot de passe** : celui propre à la machine (formulaire d'hôte), sinon
+  `BASTION_DEFAULT_VNC_PASSWORD`, sinon le **mot de passe SSH mémorisé** de la machine ;
+- **utilisateur** : celui propre au VNC de la machine, sinon son compte SSH mémorisé, sinon
+  `BASTION_DEFAULT_SSH_USER` (un serveur VNC qui ne demande pas d'utilisateur l'ignore).
+
+Valable aussi bien pour le pont TLS (VeNCrypt, où l'authentification a lieu côté serveur) que
+pour un serveur VNC classique. **Attention** : pour un serveur VNC non chiffré, noVNC
+authentifie depuis le navigateur, donc ce mot de passe (y compris un mot de passe SSH réutilisé)
+est présent dans la page VNC -- limite déjà documentée pour le mot de passe VNC, élargie ici.
+Le port VNC est prérempli à `5900` sur un nouvel hôte (à vider pour une machine sans VNC).
 
 ## Lancement
 

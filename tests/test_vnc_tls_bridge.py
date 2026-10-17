@@ -194,3 +194,44 @@ def test_bridge_connection_still_bridges_when_session_recording_fails(monkeypatc
     bridge.bridge_connection(_FakeSock(), {"id": "m1"}, pin_certificate=None)
 
     assert len(calls) == 1  # le pont a bien tourné malgré l'échec d'enregistrement
+
+
+# --- identifiants VNC effectifs (credentials.vnc_login) : le pont s'en sert aux DEUX endroits
+# où il s'authentifie auprès du vrai serveur, pas seulement les identifiants propres. -------
+
+def _patch_vencrypt_negotiation(monkeypatch, captured):
+    monkeypatch.setattr(
+        bridge, "_probe",
+        lambda machine, timeout: (_FakeSock(), "003.008", 1, [bridge.SEC_TYPE_VENCRYPT],
+                                  [bridge.SEC_TYPE_VENCRYPT]),
+    )
+    monkeypatch.setattr(bridge, "_choose_security_type", lambda sock, sec_type: None)
+
+    def fake_handshake(raw_sock, machine, pin, username, password):
+        captured.append((username, password))
+        raise bridge.VncBridgeError("arrêt volontaire du test après la poignée de main")
+
+    monkeypatch.setattr(bridge, "_vencrypt_handshake", fake_handshake)
+
+
+def test_connect_to_real_server_uses_the_default_vnc_login(monkeypatch):
+    monkeypatch.setenv("BASTION_DEFAULT_VNC_PASSWORD", "defaut-serveur")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_USER", "pi")
+    captured = []
+    _patch_vencrypt_negotiation(monkeypatch, captured)
+
+    with pytest.raises(bridge.VncBridgeError):
+        bridge.connect_to_real_server({"id": "m1", "host": "10.0.0.1", "vnc_port": 5900})
+
+    assert captured == [("pi", "defaut-serveur")]
+
+
+def test_bridge_connection_inner_uses_the_default_vnc_login(monkeypatch):
+    monkeypatch.setenv("BASTION_DEFAULT_VNC_PASSWORD", "defaut-serveur")
+    monkeypatch.setenv("BASTION_DEFAULT_SSH_USER", "pi")
+    captured = []
+    _patch_vencrypt_negotiation(monkeypatch, captured)
+
+    bridge._bridge_connection_inner(_FakeSock(), {"id": "m1", "host": "10.0.0.1"}, None)
+
+    assert captured == [("pi", "defaut-serveur")]

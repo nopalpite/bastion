@@ -48,6 +48,9 @@ services:
       # le montage correspondant plus bas (lecture seule, droits 0600).
       # - BASTION_DEFAULT_SSH_KEY_FILE=/run/keys/default_ed25519
       # - BASTION_DEFAULT_SSH_USER=pi
+      # Optionnel: mot de passe VNC par défaut (le compte reprend le compte SSH) pour les machines
+      # sans mot de passe VNC propre -- voir "Identifiants VNC par défaut" du README.
+      # - BASTION_DEFAULT_VNC_PASSWORD=
     volumes:
       # Monter l'inventaire (machines.yaml) en externe pour le modifier sans
       # rebuild. Un DOSSIER, pas le fichier directement: voir BASTION_DATA_DIR

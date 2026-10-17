@@ -102,3 +102,36 @@ def default_ssh_key_text():
 
 def default_ssh_username():
     return os.environ.get("BASTION_DEFAULT_SSH_USER") or None
+
+
+# --- Identifiants VNC PAR DÉFAUT ---------------------------------------------------------
+# Même idée que la clé SSH par défaut ci-dessus, pour un parc dont les machines partagent le
+# même compte (le compte système sert aussi à l'authentification VNC, ex. RealVNC Server).
+#   BASTION_DEFAULT_VNC_PASSWORD : mot de passe VNC utilisé quand une machine n'en a pas un
+#                                  propre (le compte reprend le compte SSH, voir vnc_login)
+
+
+def default_vnc_password():
+    return os.environ.get("BASTION_DEFAULT_VNC_PASSWORD") or None
+
+
+def vnc_login(machine):
+    """(utilisateur, mot de passe) VNC à utiliser pour `machine` -- chacun peut être None.
+    Un seul endroit, partagé par la page VNC (app.py) et le pont TLS (vnc_tls_bridge.py).
+
+    Mot de passe, du plus au moins spécifique :
+      1. le mot de passe VNC propre à la machine ;
+      2. BASTION_DEFAULT_VNC_PASSWORD (défaut du serveur) ;
+      3. à défaut, le mot de passe SSH mémorisé de la machine (« même que SSH »).
+    Utilisateur : celui propre au VNC de la machine, sinon son compte SSH mémorisé, sinon
+    BASTION_DEFAULT_SSH_USER. Un serveur VNC qui ne demande pas d'utilisateur l'ignore."""
+    stored = machine.get("credentials") or {}
+
+    password = decrypt(machine["vnc_password"]) if machine.get("vnc_password") else None
+    if not password:
+        password = default_vnc_password()
+    if not password and stored.get("password"):
+        password = decrypt(stored["password"])
+
+    username = machine.get("vnc_username") or stored.get("username") or default_ssh_username()
+    return username, password

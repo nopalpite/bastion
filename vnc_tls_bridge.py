@@ -401,9 +401,7 @@ def connect_to_real_server(machine, timeout=8, pin_certificate=None):
     Pour le cas général (le serveur peut proposer autre chose que
     VeNCrypt), voir bridge_connection, qui fait le même travail mais
     bascule en relais transparent si un type "classique" est disponible."""
-    stored_password = machine.get("vnc_password")
-    password = credentials.decrypt(stored_password) if stored_password else None
-    username = machine.get("vnc_username")
+    username, password = credentials.vnc_login(machine)
 
     raw_sock, _raw_version, _raw_count, _raw_types, types = _probe(machine, timeout)
     try:
@@ -566,9 +564,7 @@ def _bridge_connection_inner(client_sock, machine, pin_certificate):
     try:
         if SEC_TYPE_VENCRYPT not in types:
             raise VncBridgeError(f"Types de sécurité non supportés par ce pont: {types}")
-        stored_password = machine.get("vnc_password")
-        password = credentials.decrypt(stored_password) if stored_password else None
-        username = machine.get("vnc_username")
+        username, password = credentials.vnc_login(machine)
         _choose_security_type(raw_sock, SEC_TYPE_VENCRYPT)
         server_sock, server_init = _vencrypt_handshake(
             raw_sock, machine, pin_certificate, username, password,

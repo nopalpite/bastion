@@ -124,7 +124,9 @@ def test_new_host_form_says_when_there_is_no_default_account(
     # Renseigner seulement « Utilisateur SSH » ne mémorise rien (un compte n'est enregistré
     # qu'avec un mot de passe ou une clé) : on ne le conseille donc pas.
     assert "renseignez" not in body
-    assert "Laissez ces champs vides" not in body  # sans compte, ce serait faux
+    # Phrase complète de la note SSH : l'aide VNC de la même page dit aussi « Laissez ces
+    # champs vides » (pour d'autres champs), un simple sous-texte collisionnerait.
+    assert "Laissez ces champs vides pour l'utiliser" not in body  # sans compte, ce serait faux
 
 
 def test_new_host_form_warns_when_the_default_key_file_is_broken(
@@ -257,6 +259,98 @@ def test_vnc_page_hides_retour_link_when_embedded(client):
     resp = client.get("/vnc/serveur-test?embedded=1")
 
     assert "Retour" not in resp.get_data(as_text=True)
+
+
+# --- Identifiants VNC par défaut (credentials.vnc_login) : une machine sans identifiants VNC
+# propres reçoit, dans la page, le mot de passe par défaut du serveur puis son mot de passe SSH.
+
+def test_vnc_page_uses_the_server_default_vnc_password_and_the_ssh_account(
+    client, credentials_key, monkeypatch,
+):
+    monkeypatch.setenv("BASTION_DEFAULT_VNC_PASSWORD", "mdp-vnc-par-defaut")
+    monkeypatch.delenv("BASTION_DEFAULT_SSH_USER", raising=False)
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+        "username": "pi", "password": "ssh-pw",
+    })
+
+    body = client.get("/vnc/serveur-test").get_data(as_text=True)
+
+    assert 'value="pi"' in body  # compte SSH repris pour le VNC
+    assert "mdp-vnc-par-defaut" in body
+    assert "ssh-pw" not in body  # le défaut serveur prime sur le mot de passe SSH
+
+
+def test_vnc_page_falls_back_to_the_ssh_password_without_a_server_default(
+    client, credentials_key, monkeypatch,
+):
+    monkeypatch.delenv("BASTION_DEFAULT_VNC_PASSWORD", raising=False)
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+        "username": "pi", "password": "ssh-pw",
+    })
+
+    body = client.get("/vnc/serveur-test").get_data(as_text=True)
+
+    assert 'value="pi"' in body and 'value="ssh-pw"' in body
+
+
+def test_vnc_page_machine_own_vnc_password_wins(client, credentials_key, monkeypatch):
+    monkeypatch.setenv("BASTION_DEFAULT_VNC_PASSWORD", "mdp-vnc-par-defaut")
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+        "vnc_port": "5900", "vnc_password": "mdp-vnc-propre",
+    })
+
+    body = client.get("/vnc/serveur-test").get_data(as_text=True)
+
+    assert 'value="mdp-vnc-propre"' in body
+    assert "mdp-vnc-par-defaut" not in body
+
+
+# --- Port VNC prérempli à 5900 sur un nouvel hôte vierge (pas pour une découverte réseau,
+# qui n'a détecté aucun VNC, ni à l'édition d'une machine existante). -----------------------
+
+def test_new_host_form_prefills_vnc_port_5900(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    body = client.get("/hosts/new").get_data(as_text=True)
+
+    assert 'id="vnc_port" name="vnc_port" value="5900"' in body
+
+
+def test_new_host_form_from_discovery_without_vnc_leaves_the_port_empty(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    body = client.get("/hosts/new?host=10.0.0.9&name=srv&ssh_port=22").get_data(as_text=True)
+
+    assert 'id="vnc_port" name="vnc_port" value=""' in body
+
+
+def test_edit_host_form_keeps_the_machines_own_vnc_port(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+        "vnc_port": "5901",
+    })
+
+    body = client.get("/hosts/serveur-test/edit").get_data(as_text=True)
+
+    assert 'id="vnc_port" name="vnc_port" value="5901"' in body
+
+
+def test_edit_host_form_of_a_machine_without_vnc_does_not_force_5900(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+    client.post("/hosts/new", data={
+        "name": "Serveur Test", "os": "linux", "host": "10.0.0.1", "ssh_port": "22",
+    })
+
+    body = client.get("/hosts/serveur-test/edit").get_data(as_text=True)
+
+    assert 'id="vnc_port" name="vnc_port" value=""' in body
 
 
 # --- /stats: page de statistiques de disponibilité (voir history.py) ---

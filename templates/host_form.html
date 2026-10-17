@@ -33,7 +33,7 @@
 
     <div class="field">
       <label for="vnc_port">Port VNC (optionnel)</label>
-      <input type="number" id="vnc_port" name="vnc_port" value="{{ machine.vnc_port if machine else (prefill.vnc_port if prefill else '') }}" placeholder="5900">
+      <input type="number" id="vnc_port" name="vnc_port" value="{{ machine.vnc_port if machine else (prefill.vnc_port if prefill else 5900) }}" placeholder="5900">
     </div>
 
     <div class="field">
@@ -148,6 +148,15 @@
     Le mot de passe (et l'utilisateur, si le serveur en demande un) sera
     envoyé automatiquement à l'ouverture de la connexion VNC — sinon
     noVNC vous les demandera à chaque fois via un petit formulaire.
+  </p>
+  <p class="hint-box">
+    Laissez ces champs vides pour réutiliser les identifiants par défaut :
+    mot de passe VNC du serveur (<code>BASTION_DEFAULT_VNC_PASSWORD</code>)
+    s'il est défini, sinon mot de passe SSH de cette machine ; utilisateur =
+    celui indiqué ici, sinon le compte SSH (ou
+    <code>BASTION_DEFAULT_SSH_USER</code>). Ce que vous saisissez ici prime.
+    Port VNC : laissez 5900 (valeur par défaut) ou videz le champ si cette
+    machine n'a pas de VNC.
   </p>
 
   <div class="form-grid" style="margin-top: 14px;">
