@@ -33,7 +33,7 @@
 
     <div class="field">
       <label for="vnc_port">Port VNC (optionnel)</label>
-      <input type="number" id="vnc_port" name="vnc_port" value="{{ machine.vnc_port if machine else (prefill.vnc_port if prefill else 5900) }}" placeholder="5900">
+      <input type="number" id="vnc_port" name="vnc_port" value="{{ machine.vnc_port if machine else (prefill.vnc_port if prefill and prefill.vnc_port else 5900) }}" placeholder="5900">
     </div>
 
     <div class="field">

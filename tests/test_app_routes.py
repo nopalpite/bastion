@@ -311,8 +311,9 @@ def test_vnc_page_machine_own_vnc_password_wins(client, credentials_key, monkeyp
     assert "mdp-vnc-par-defaut" not in body
 
 
-# --- Port VNC prérempli à 5900 sur un nouvel hôte vierge (pas pour une découverte réseau,
-# qui n'a détecté aucun VNC, ni à l'édition d'une machine existante). -----------------------
+# --- Port VNC prérempli à 5900 sur un nouvel hôte (formulaire vierge comme préremplissage
+# depuis la découverte réseau), sauf si un port VNC a été détecté (conservé), et jamais à
+# l'édition d'une machine existante. --------------------------------------------------------
 
 def test_new_host_form_prefills_vnc_port_5900(client):
     client.post("/login", data={"username": "admin", "password": "admin"})
@@ -322,12 +323,26 @@ def test_new_host_form_prefills_vnc_port_5900(client):
     assert 'id="vnc_port" name="vnc_port" value="5900"' in body
 
 
-def test_new_host_form_from_discovery_without_vnc_leaves_the_port_empty(client):
+def test_new_host_form_from_discovery_without_vnc_detected_still_defaults_to_5900(client):
+    """Lien "+ Ajouter" de /discover quand aucun VNC n'a été détecté: le paramètre vnc_port est
+    alors absent (vide) -- le champ doit quand même afficher la valeur par défaut."""
     client.post("/login", data={"username": "admin", "password": "admin"})
 
-    body = client.get("/hosts/new?host=10.0.0.9&name=srv&ssh_port=22").get_data(as_text=True)
+    body = client.get(
+        "/hosts/new?host=10.0.0.9&name=srv&ssh_port=22&vnc_port="
+    ).get_data(as_text=True)
 
-    assert 'id="vnc_port" name="vnc_port" value=""' in body
+    assert 'id="vnc_port" name="vnc_port" value="5900"' in body
+
+
+def test_new_host_form_from_discovery_keeps_a_detected_vnc_port(client):
+    client.post("/login", data={"username": "admin", "password": "admin"})
+
+    body = client.get(
+        "/hosts/new?host=10.0.0.9&name=srv&ssh_port=22&vnc_port=5901"
+    ).get_data(as_text=True)
+
+    assert 'id="vnc_port" name="vnc_port" value="5901"' in body
 
 
 def test_edit_host_form_keeps_the_machines_own_vnc_port(client):
