@@ -586,7 +586,9 @@ body.page-map .container { max-width: none; }
 }
 .dashboard-search input:focus { outline: none; border-color: var(--accent); }
 
-.machine-card.filtered-out, .room-group.filtered-out { display: none; }
+/* !important : en vue compacte, `.machine-grid.list-view .machine-card { display: flex }`
+   est plus specifique et laissait les cartes filtrees affichees. */
+.machine-card.filtered-out, .room-group.filtered-out { display: none !important; }
 
 .tag-filters {
   display: flex;
