@@ -482,3 +482,10 @@ def test_default_ssh_credentials_count_as_stored(tmp_path, monkeypatch):
     monkeypatch.setenv("BASTION_DEFAULT_SSH_USER", "pi")
     assert store.has_stored_credentials(machine) is True
     assert store.has_stored_credentials({}) is True
+
+
+def test_add_tag_to_catalog_keeps_underscores(machines_file):
+    # un tag nomme souvent un rôle Ansible : cap_sciences_launcher doit rester tel quel
+    store.add_tag_to_catalog("cap_sciences_launcher")
+    store.add_tag_to_catalog(" _Écran tactile_ ")
+    assert store.load_tag_catalog() == ["cap_sciences_launcher", "ecran-tactile"]

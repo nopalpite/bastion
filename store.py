@@ -32,7 +32,7 @@ import yaml
 
 import credentials
 from config import MACHINES_FILE
-from ids import slugify, unique_id
+from ids import slugify, tag_name, unique_id
 
 _lock = threading.Lock()
 
@@ -219,12 +219,12 @@ def set_room_map_image(room_id, filename):
 
 def add_tag_to_catalog(name):
     """Ajoute un tag au catalogue géré (voir /tags). Normalisé avec
-    slugify() comme les ids de machines/salles (accents repliés,
-    minuscules, espaces→tirets) pour qu'un même tag ne puisse jamais
+    tag_name() (accents repliés, minuscules, espaces→tirets, underscores
+    gardés : un tag nomme souvent un rôle Ansible) pour qu'un même tag ne puisse jamais
     exister sous deux graphies différentes dans le catalogue. No-op
     silencieux si vide ou déjà présent — idempotent, pas d'erreur pour un
     cas aussi bénin (même philosophie que _build_credentials ci-dessus)."""
-    name = slugify(name, fallback="")
+    name = tag_name(name)
     if not name:
         return
     with _lock:

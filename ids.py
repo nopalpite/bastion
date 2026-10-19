@@ -12,6 +12,15 @@ def slugify(text, fallback="item"):
     return text or fallback
 
 
+def tag_name(text):
+    """Comme slugify(), mais garde les underscores : un tag porte souvent le
+    nom d'un rôle Ansible (cap_sciences_launcher), qui ne contient que
+    [a-z0-9_] — le changer en tirets donnerait un tag qui ne correspond
+    plus au rôle."""
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-zA-Z0-9_]+", "-", text).strip("-_").lower()
+
+
 def unique_id(base, existing_ids):
     candidate = base
     i = 2
