@@ -27,6 +27,14 @@
     <label for="vnc-clipboard-to-remote">Envoyer vers la machine distante</label>
     <textarea id="vnc-clipboard-to-remote" rows="3" placeholder="Collez ici (Ctrl+V) puis Envoyer…"></textarea>
     <button type="button" class="btn primary" id="vnc-clipboard-send">Envoyer</button>
+    <button type="button" class="btn small" id="vnc-type-send" disabled>Saisir le texte</button>
+    <button type="button" class="btn small" id="vnc-type-cancel" disabled>Annuler la saisie</button>
+    <p class="hint-box">Saisir le texte simule des touches, sans Ctrl+V ni Entrée.
+      Cliquez d'abord dans le champ distant voulu, puis ouvrez ce panneau et collez ici.
+      Le clic sur ce bouton ne choisit pas de champ distant : la saisie vise celui qui
+      a conservé le focus. Relâchez les touches modificatrices et ne manipulez pas
+      la session pendant l'envoi. Une seule ligne, 1024 caractères maximum ;
+      tabulations, retours à la ligne et autres contrôles sont refusés.</p>
   </div>
   <div class="field">
     <label for="vnc-clipboard-from-remote">Reçu de la machine distante</label>
@@ -59,6 +67,7 @@
 -->
 <script type="module">
   import RFB from "{{ url_for('static', filename='novnc/core/rfb.js') }}";
+  import { sendText, textKeysyms } from "{{ url_for('static', filename='js/vnc-type-text.mjs') }}";
 
   // On utilise l'hôte que le navigateur a réellement utilisé pour
   // accéder à la page (window.location), pas une valeur fixée côté
@@ -161,10 +170,60 @@
   const clipboardFromRemote = document.getElementById("vnc-clipboard-from-remote");
   const clipboardStatus = document.getElementById("vnc-clipboard-status");
 
+  const typeSend = document.getElementById("vnc-type-send");
+  const typeCancel = document.getElementById("vnc-type-cancel");
+  const clipboardSend = document.getElementById("vnc-clipboard-send");
+  let typing = null;
+  const partialMessage = "Saisie interrompue, éventuellement partielle. Vérifiez et effacez le champ distant avant de recommencer ; le texte local a été effacé.";
+  function updateTypingUI() {
+    typeSend.disabled = !!typing || !vncConnected || rfb.viewOnly;
+    typeCancel.disabled = !typing;
+    clipboardSend.disabled = !!typing;
+    clipboardToRemote.disabled = !!typing;
+  }
+  function cancelTyping() {
+    if (typing) typing.abort();
+    clipboardToRemote.value = "";
+  }
+  updateTypingUI();
+  rfb.addEventListener("connect", updateTypingUI);
+  rfb.addEventListener("disconnect", () => { cancelTyping(); updateTypingUI(); });
+  window.addEventListener("pagehide", cancelTyping);
+  typeCancel.addEventListener("click", cancelTyping);
+  typeSend.addEventListener("click", async () => {
+    if (typing || !vncConnected || rfb.viewOnly) return;
+    try {
+      textKeysyms(clipboardToRemote.value);
+    } catch (err) {
+      clipboardStatus.textContent = err.message;
+      return;
+    }
+    typing = new AbortController();
+    updateTypingUI();
+    clipboardStatus.textContent = "Saisie en cours… Ne manipulez pas la session.";
+    try {
+      const complete = await sendText(rfb, clipboardToRemote.value, {
+        connected: () => vncConnected, signal: typing.signal,
+      });
+      clipboardStatus.textContent = complete
+        ? "Touches envoyées sans Entrée. Vérifiez le champ distant avant de valider."
+        : partialMessage;
+    } catch {
+      // Never display/log an exception that might contain sensitive payload data.
+      clipboardStatus.textContent = partialMessage;
+    } finally {
+      clipboardToRemote.value = "";
+      typing = null;
+      updateTypingUI();
+    }
+  });
+
   clipboardToggle.addEventListener("click", () => {
+    if (clipboardPanel.style.display === "block") cancelTyping();
     clipboardPanel.style.display = clipboardPanel.style.display === "block" ? "none" : "block";
   });
   document.getElementById("vnc-clipboard-close").addEventListener("click", () => {
+    cancelTyping();
     clipboardPanel.style.display = "none";
   });
 
