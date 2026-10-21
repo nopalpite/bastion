@@ -30,6 +30,25 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest -v
 
+  js-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # noVNC n'est pas dans le dépôt (static/novnc/ est ignoré) : on le récupère
+      # exactement comme le Dockerfile, pour tester contre la même version que
+      # celle livrée dans l'image (un changement amont de noVNC casse ici, pas
+      # en production).
+      - run: |
+          git clone --depth 1 https://github.com/novnc/noVNC.git /tmp/noVNC
+          echo "noVNC $(git -C /tmp/noVNC rev-parse --short HEAD)"
+          mkdir -p static/novnc
+          cp -r /tmp/noVNC/core static/novnc/core
+          cp -r /tmp/noVNC/vendor static/novnc/vendor
+      - run: node --test tests/*.test.mjs
+
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
